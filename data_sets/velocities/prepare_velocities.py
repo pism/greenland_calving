@@ -8,10 +8,60 @@ import os.path
 import time
 import collections,re,sys
 import gc
+import netCDF4
+import numpy as np
+import csv
 
 reftime = "2008-01-01"
 components = ["vx", "vy", "vv"]
 download_dir = "data"
+
+# These are files for which domain_checksum2() == 0
+blacklist_raw = (
+    'TSX_W69.10N_02Jun18_13Jun18_09-48-58_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_29May15_20Jun15_09-48-37_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_31May14_11Jun14_09-48-32_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_03Jul09_14Jul09_09-48-07_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_13Jun18_05Jul18_09-48-58_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_05Jul18_27Jul18_09-49-00_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_26May16_17Jun16_09-48-43_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_18Jul17_09Aug17_09-48-53_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_16Jul13_18Aug13_09-48-29_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_30Apr18_02Jun18_09-48-57_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_10Nov15_21Nov15_09-48-42_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_23Aug11_14Sep11_09-48-21_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_18Sep09_29Sep09_09-48-11_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_28Apr09_09May09_09-48-04_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_09Sep18_20Sep18_09-49-03_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_30Jan09_10Feb09_09-48-02_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_06Feb11_28Feb11_09-48-12_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_21Apr12_02May12_09-48-19_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_10Feb14_21Feb14_09-48-29_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_23Nov14_04Dec14_09-48-46_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_25Aug10_05Sep10_09-48-16_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_21Nov10_02Dec10_09-48-17_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_14Feb17_25Feb17_09-48-47_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_18May15_29May15_09-48-36_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_04Feb12_15Feb12_09-48-17_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_19Apr18_30Apr18_09-48-57_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_21Jul11_01Aug11_09-48-19_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_12Feb13_23Feb13_09-48-22_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_24Apr11_05May11_09-48-14_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_26Apr10_07May10_09-48-11_{parameter}_v02.0{ext}')
+
+def get_blackset(**kwargs):
+    return set(x.format(**kwargs) for x in blacklist_raw)
+
+def remove_blacklist(pfiles, **kwargs):
+    blackset = get_blackset(**kwargs)
+    ret = []
+    for pf in pfiles:
+        if pf['fname'] in blackset:
+            print('Blacklisting {fname}'.format(**pf))
+        else:
+            ret.append(pf)
+    return ret
+# ----------------------------------------------------
 
 def up_to_date(ifnames, ofnames):
     """Returns True if the files in ofnames exist, and are all newer than
@@ -174,6 +224,49 @@ def tiff_to_netcdf(pfile, odir, oext='.nc'):
             pass
 
 # --------------------------------------------------------------
+# https://stackoverflow.com/questions/11144513/cartesian-product-of-x-and-y-array-points-into-single-array-of-2d-points
+def np_cartesian_product(x,y):
+#    return np.transpose([np.tile(x, len(y)), np.repeat(y, len(x))])
+    xx = np.transpose(np.tile(x, (len(y),1)))
+    yy = np.tile(y, (len(x),1))
+    ret = xx+yy
+    return ret
+
+def domain_checksum1(time_ncfile, parameter):
+    with netCDF4.Dataset(time_ncfile) as nc:
+        ncvar = nc.variables[parameter]
+        var = ncvar[0,:,:]
+        FillValue = ncvar._FillValue
+
+    weights = np_cartesian_product(
+        np.array([float(j) for j in range(0,var.shape[0])]),
+        np.array([float(i) for i in range(0,var.shape[1])]))
+    mask = np.not_equal(var, FillValue)
+
+    return np.sum(np.sum(weights*mask))
+
+def domain_checksum2(time_ncfile, parameter):
+    """Count used pixels near the glacier terminus."""
+
+    with netCDF4.Dataset(time_ncfile) as nc:
+        ncvar = nc.variables[parameter]
+        var = ncvar[0,:,:]
+        FillValue = ncvar._FillValue
+
+    mask = np.zeros(var.shape)
+    mask[373:413,387:439] = 1   # Close to glacier terminus
+
+    exist = np.not_equal(var, FillValue)
+
+    return np.sum(np.sum(exist*mask))
+
+# --------------------------------------------------------------
+def cdo_merge(inputs, output, options):
+    for input in inputs:
+        cdo.merge(
+            input=(input,),
+            output=output,
+            options=options)
 # --------------------------------------------------------------
 def merge_glacier(idir, odir, ofpattern, parameters, **attrs):
     """attrs should contain soure, grid
@@ -191,14 +284,24 @@ def merge_glacier(idir, odir, ofpattern, parameters, **attrs):
         atrs['ext'] = '.tif'
 
         pfiles_tif = list_pfiles(idir, parse_nsidc_0418, atrs)
+        pfiles_tif = remove_blacklist(pfiles_tif, parameter=parameter, ext='.tif')
         pfiles_nc = list()
         for ix,pfile in enumerate(pfiles_tif):
-            if ix >= 10:
-                break
+#            if ix >= 10:
+#                break
             pfiles_nc.append(tiff_to_netcdf(pfile, odir))
 
-        for pf in pfiles_nc:
-            print(pf['dir'], pf['fname'])
+#        for pf in pfiles_nc:
+#            cs1 = domain_checksum1(os.path.join(pf['dir'],pf['fname']), pf['parameter'])
+#            cs2 = domain_checksum2(os.path.join(pf['dir'],pf['fname']), pf['parameter'])
+#            pf['domain_checksum1'] = cs1
+#            pf['domain_checksum2'] = cs2
+#            print(pf['fname'], cs1,cs2)
+
+#        with open(f'checkums_{parameter}.csv', 'w') as fout:
+#            writer = csv.writer(fout)
+#            for pf in pfiles_nc:
+#                writer.writerow([pf['fname'], pf['domain_checksum1'], pf['domain_checksum2']])
 
         # Merge this individual component and sort by time using "mergetime"
         ofname = os.path.join(
@@ -211,14 +314,16 @@ def merge_glacier(idir, odir, ofpattern, parameters, **attrs):
 
     ofnames.append(ofname)
 
-    print(ofnames)
-    sys.exit(0)
+    for pf in pfiles_nc:
+        # Create the final merged file
+        cdo.merge(
+            input=ofnames,
+            output=ofpattern.format(*attrs),
+            options="-f nc4 -z zip_2")
 
-    # Create the final merged file
-    cdo.merge(
-        input=ofnames,
-        output=ofpattern.format(*attrs),
-        options="-f nc4 -z zip_2")
+#print(domain_checksum('outputs/TSX_W69.10N_03Mar09_14Mar09_10-05-12_vx_v02.0.nc', 'vx'))
+
+#sys.exit(0)
 
 merge_glacier('data', 'outputs', '{source}_{grid}_2008_2020.nc',
     ('vx',), source='TSX', grid='W69.10N')
