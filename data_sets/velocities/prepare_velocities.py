@@ -283,6 +283,53 @@ def cdo_merge(inputs, output, options):
             output=output,
             options=options)
 # --------------------------------------------------------------
+class TmpFiles(object):
+    def __init__(self, root):
+        self.root = root
+        self.next_tmp = 0
+
+    def __next__(self):
+        """Get a tmp filename"""
+        ret = '{}_{}'.format(self.root, self.next_tmp)
+        self.next_tmp += 1
+        return ret
+
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        for i in range(0,self.next_tmp):
+            try:
+                os.remove('{}_{}'.format(self.root, i))
+            except FileNotFoundError:
+                pass
+
+
+
+max_merge = 30
+def large_merge(cdo_merge_operator, input, output, level=0, **kwargs):
+    """Recursively merge large numbers of files using a CDO merge-type operator
+    cdo_merge_operator:
+        The CDO operator used to merge; Eg: cdo.mergetime
+    """
+
+    print('large_merge', level, input, output)
+
+    odir = os.path.split(output)[0]
+    with TmpFiles(os.path.join(odir, 'tmp_{}'.format(level))) as tmp_files:
+        if len(input) > max_merge:
+
+            input1 = list()
+            chunks = [input[x:x+max_merge] for x in range(0, len(input), max_merge)]
+            for chunk in chunks:
+                ochunk = next(tmp_files)
+                input1.append(ochunk)
+                #print('xxy', level, len(chunk))
+                large_merge(cdo_merge_operator, chunk, ochunk, level=level+1, **kwargs)
+
+            input = input1
+
+        cdo_merge_operator(input=input, output=output, **kwargs)
+# --------------------------------------------------------------
 def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=99999999, all_files=None, **attrs0):
     """attrs should contain soure, grid
     ofpattern:
@@ -312,6 +359,7 @@ def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=999
             all_files.append(merge_path)
 
         # Go through each file
+        pfiles_nc = list()
         blacklist = get_blacklist(**attrs)
         for ix,pf_tif in enumerate(pfiles_tif):
 
@@ -328,13 +376,19 @@ def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=999
             # Convert to NetCDF
             pf_nc = tiff_to_netcdf(pf_tif, odir, all_files=all_files)
 
-            # Determine if it covers Jakobshavn
-            if not filter_nc_fn(pf_nc):
-                continue
+#            # Determine if it covers Jakobshavn
+#            if not filter_nc_fn(pf_nc):
+#                continue
 
-            # Merge into the mergefile
-            cdo.mergetime(input=(pf_nc.path,),
-                output=merge_path, options="-f nc4 -z zip_2")
+            # Save for later
+            pfiles_nc.append(pf_nc)
+
+
+        # Merge into the mergefile
+        large_merge(
+            cdo.mergetime,
+            input=[x.path for x in pfiles_nc],
+            output=merge_path, options="-f nc4 -z zip_2")
 
 
 #    for pf in pfiles_nc:
@@ -352,6 +406,7 @@ all_files = list()
 merge_glacier('data', 'outputs', '{source}_{grid}_2008_2020.nc',
     ('vx',), source='TSX', grid='W69.10N',
     filter_nc_fn = in_rectangle((373,413),(387,439)),
-    all_files=all_files, max_files=10)
+    all_files=all_files,
+    max_files=10000)
 
 #    ('vx', 'vy', 'vv'), source='TSX', grid='W69.10N')
