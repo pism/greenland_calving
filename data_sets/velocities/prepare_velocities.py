@@ -47,7 +47,11 @@ blacklist_raw = (
     'TSX_W69.10N_21Jul11_01Aug11_09-48-19_{parameter}_v02.0{ext}',
     'TSX_W69.10N_12Feb13_23Feb13_09-48-22_{parameter}_v02.0{ext}',
     'TSX_W69.10N_24Apr11_05May11_09-48-14_{parameter}_v02.0{ext}',
-    'TSX_W69.10N_26Apr10_07May10_09-48-11_{parameter}_v02.0{ext}')
+    'TSX_W69.10N_26Apr10_07May10_09-48-11_{parameter}_v02.0{ext}',
+    # Right domain but Missing a LOT
+    'TSX_W69.10N_03Jul19_25Jul19_20-42-06_{parameter}_v02.0{ext}',
+    'TSX_W69.10N_10Sep17_02Oct17_10-06-06_{parameter}_v02.0{ext}', 
+)
 
 def get_blacklist(**kwargs):
     return set(x.format(**kwargs) for x in blacklist_raw)
