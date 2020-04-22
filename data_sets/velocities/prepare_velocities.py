@@ -49,36 +49,27 @@ blacklist_raw = (
     'TSX_W69.10N_24Apr11_05May11_09-48-14_{parameter}_v02.0{ext}',
     'TSX_W69.10N_26Apr10_07May10_09-48-11_{parameter}_v02.0{ext}')
 
-def get_blackset(**kwargs):
+def get_blacklist(**kwargs):
     return set(x.format(**kwargs) for x in blacklist_raw)
 
-def remove_blacklist(pfiles, **kwargs):
-    blackset = get_blackset(**kwargs)
-    ret = []
-    for pf in pfiles:
-        if pf['fname'] in blackset:
-            print('Blacklisting {fname}'.format(**pf))
-        else:
-            ret.append(pf)
-    return ret
 # ----------------------------------------------------
 
-def up_to_date(ifnames, ofnames):
-    """Returns True if the files in ofnames exist, and are all newer than
-    the files in ifnames"""
+def up_to_date(ipaths, opaths):
+    """Returns True if the files in opaths exist, and are all newer than
+    the files in ipaths"""
     
-    # Get oldest time of ofnames (ms since the epoch)
+    # Get oldest time of opaths (ms since the epoch)
     now = datetime.now().timestamp() * 1000.
     oldest_otime = now
-    for ofname in ofnames:
-        if not os.path.exists(ofname):
+    for opath in opaths:
+        if not os.path.exists(opath):
             return False    # Automatically regenerate if it doesn't exist
-        oldest_otime = min(oldest_otime, os.path.getmtime(ofname))
+        oldest_otime = min(oldest_otime, os.path.getmtime(opath))
 
     # Get newest itime
-    newest_itime = os.path.getmtime(ifnames[0])
-    for ifname in ifnames[1:]:
-        newest_itime = max(newest_itime, os.path.getmtime(ifname))
+    newest_itime = os.path.getmtime(ipaths[0])
+    for ipath in ipaths[1:]:
+        newest_itime = max(newest_itime, os.path.getmtime(ipath))
 
     return oldest_otime > newest_itime
 
@@ -89,7 +80,28 @@ def merge_dicts(*dicts):
         dict.update(xdict.items())
     return dict
 
-class NSIDC_0418(dict):
+class PFile(dict):
+
+    @property
+    def root(self):
+        return self['dir']
+
+    @property
+    def leaf(self):
+        """The leafname"""
+        return self.format()
+
+    @property
+    def path(self):
+        """Full pathname"""
+        return os.path.join(self['dir'], self.leaf)
+
+
+class NSIDC_0418(PFile):
+
+    key_fn = lambda x: (x['source'], x['grid'], x['startdate'], x['enddate'],
+        x['parameter'], x['nominal_time'], x['version'], x['ext'])
+
 
     def format(self, **overrides):
         # Override self with overrides
@@ -112,9 +124,11 @@ imonth = { 'Jan':1, 'Feb':2, 'Mar':3, 'Apr':4, 'May':5, 'Jun':6, 'Jul':7,
 
 reNSIDC_0418 = re.compile(r'(TSX|TDX)_([EWS][0-9.]+[NS])_(\d\d(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\d\d)_(\d\d(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\d\d)_(\d\d)-(\d\d)-(\d\d)(_(vv|vx|vy|ex|ey)?)_v([0-9.]+)(\..+)')
 
-def parse_nsidc_0418(leaf):
+def parse_nsidc_0418(path):
     """
     See: https://nsidc.org/data/nsidc-0481"""
+
+    dir,leaf = os.path.split(path)
 
     match = reNSIDC_0418.match(leaf)
     if match is None:
@@ -123,7 +137,8 @@ def parse_nsidc_0418(leaf):
     sstartdate = match.group(3)
     senddate = match.group(5)
     ret = NSIDC_0418(
-        fname=leaf,
+        dir=dir,
+        leaf=leaf,
         source=match.group(1),
         grid=match.group(2),
         startdate=datetime.strptime(sstartdate, "%d%b%y"),
@@ -139,35 +154,35 @@ def parse_nsidc_0418(leaf):
     return ret
 
 # --------------------------------------------------------------
-def list_pfiles(dir, parser_fn, attrs):
-    """Lists files in a directory, that match the attributes
-    Yields parsed dict output"""
-
-    pfiles = list()
-    for file in os.listdir(dir):
-        pfile = parser_fn(file)
-        if pfile is None:
-            continue
-        pfile['dir'] = dir
-        pfile['path'] = os.path.join(pfile['dir'], pfile['fname'])
-
+def filter_attrs(attrs):
+    """Filteres a pfile if all the given attrs match"""
+    def fn(pfile):
         # See if it matches attrs
         match = True
         for (k,v) in attrs.items():
             if pfile[k] != v:
-                match = False
-                break
+                return False
+        return True
+    return fn
 
-        if not match:
+def list_pfiles(dir, parser_fn, filter_fn):
+    """Lists files in a directory, that match the attributes
+    Yields parsed dict output"""
+
+    pfiles = list()
+    for leaf in os.listdir(dir):
+        pfile = parser_fn(os.path.join(dir, leaf))
+        if pfile is None:
             continue
 
-        pfiles.append(pfile)
+        if filter_fn(pfile):
+            pfiles.append(pfile)
 
-    pfiles.sort(key = lambda x: (x['source'], x['grid'], x['startdate'], x['enddate'], x['parameter'], x['nominal_time'], x['version'], x['ext']))
+    pfiles.sort(key=type(pfiles[0]).key_fn)
 
     return pfiles
 # --------------------------------------------------------------
-def tiff_to_netcdf(pfile, odir, oext='.nc'):
+def tiff_to_netcdf(pfile, odir, all_files=None, oext='.nc'):
     """Converts single GeoTIFF to NetCDF
     ifname:
         The input GeoTIFF file
@@ -179,16 +194,13 @@ def tiff_to_netcdf(pfile, odir, oext='.nc'):
     os.makedirs(odir, exist_ok=True)
 
     # Generate ofname
-    ifname = os.path.join(pfile['dir'], pfile['fname'])
     opfile = type(pfile)(pfile.items())
     opfile['dir'] = odir
     opfile['ext'] = oext
-    opfile['fname'] = opfile.format()
-    ofname = os.path.join(odir, opfile['fname'])
     tmp0 = os.path.join(odir, opfile.format(ext='.tiff_to_netcdf_0.nc'))
 
     # Don't regenerate files already built
-    if up_to_date((ifname,), (ofname,)):
+    if up_to_date((pfile.path,), (opfile.path,)):
         return opfile
 
     try:
@@ -196,7 +208,7 @@ def tiff_to_netcdf(pfile, odir, oext='.nc'):
         # use gdal's python binging to convert GeoTiff to netCDF
         # advantage of GDAL: it gets the projection information right
         # disadvantage: the variable is named "Band1", lacks metadata
-        ds = gdal.Open(ifname)
+        ds = gdal.Open(pfile.path)
         ds = gdal.Translate(tmp0, ds)
         ds = None
 
@@ -213,9 +225,11 @@ def tiff_to_netcdf(pfile, odir, oext='.nc'):
         cdo.settaxis(
             nominal_date.isoformat(),
             input=' '.join(inputs),
-            output=ofname,
+            output=opfile.path,
             options="-f nc4 -z zip_2")
 
+        if all_files is not None:
+            all_files.append(opfile.path)
         return opfile
     finally:
         try:
@@ -226,7 +240,6 @@ def tiff_to_netcdf(pfile, odir, oext='.nc'):
 # --------------------------------------------------------------
 # https://stackoverflow.com/questions/11144513/cartesian-product-of-x-and-y-array-points-into-single-array-of-2d-points
 def np_cartesian_product(x,y):
-#    return np.transpose([np.tile(x, len(y)), np.repeat(y, len(x))])
     xx = np.transpose(np.tile(x, (len(y),1)))
     yy = np.tile(y, (len(x),1))
     ret = xx+yy
@@ -245,30 +258,32 @@ def domain_checksum1(time_ncfile, parameter):
 
     return np.sum(np.sum(weights*mask))
 
-def domain_checksum2(time_ncfile, parameter):
-    """Count used pixels near the glacier terminus."""
+def in_rectangle(xx, yy):
+    def fn(pf):
+        with netCDF4.Dataset(pf.path) as nc:
+            ncvar = nc.variables[pf['parameter']]
+            var = ncvar[0,:,:]
+            FillValue = ncvar._FillValue
 
-    with netCDF4.Dataset(time_ncfile) as nc:
-        ncvar = nc.variables[parameter]
-        var = ncvar[0,:,:]
-        FillValue = ncvar._FillValue
+        mask = np.zeros(var.shape)
+        mask[xx[0]:xx[1],yy[0]:yy[1]] = 1
 
-    mask = np.zeros(var.shape)
-    mask[373:413,387:439] = 1   # Close to glacier terminus
+        exist = np.not_equal(var, FillValue)
 
-    exist = np.not_equal(var, FillValue)
+        return np.sum(np.sum(exist*mask)) > 0
+    return fn
 
-    return np.sum(np.sum(exist*mask))
 
 # --------------------------------------------------------------
 def cdo_merge(inputs, output, options):
+    """Does cdo.merge(), one file at a time"""
     for input in inputs:
         cdo.merge(
             input=(input,),
             output=output,
             options=options)
 # --------------------------------------------------------------
-def merge_glacier(idir, odir, ofpattern, parameters, **attrs):
+def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=99999999, all_files=None, **attrs0):
     """attrs should contain soure, grid
     ofpattern:
         Eg: '{source}_{grid}_2008_2020.nc'
@@ -279,52 +294,64 @@ def merge_glacier(idir, odir, ofpattern, parameters, **attrs):
     ofnames = []
     for parameter in parameters:
         # Convert GeoTIFF to NetCDF
-        atrs = dict(attrs.items())
-        atrs['parameter'] = parameter
-        atrs['ext'] = '.tif'
+        attrs = dict(attrs0.items())
+        attrs['parameter'] = parameter
+        attrs['ext'] = '.tif'
 
-        pfiles_tif = list_pfiles(idir, parse_nsidc_0418, atrs)
-        pfiles_tif = remove_blacklist(pfiles_tif, parameter=parameter, ext='.tif')
-        pfiles_nc = list()
-        for ix,pfile in enumerate(pfiles_tif):
-#            if ix >= 10:
-#                break
-            pfiles_nc.append(tiff_to_netcdf(pfile, odir))
+        # Get list of .tif files
+        pfiles_tif = list_pfiles(idir, parse_nsidc_0418, filter_attrs(attrs))
 
-#        for pf in pfiles_nc:
-#            cs1 = domain_checksum1(os.path.join(pf['dir'],pf['fname']), pf['parameter'])
-#            cs2 = domain_checksum2(os.path.join(pf['dir'],pf['fname']), pf['parameter'])
-#            pf['domain_checksum1'] = cs1
-#            pf['domain_checksum2'] = cs2
-#            print(pf['fname'], cs1,cs2)
+        # Start a new mergefile
+        merge_path = os.path.join(
+            odir, '{source}_{grid}_{parameter}_merged.nc'.format(**attrs))
+        try:
+            os.remove(merge_path)
+        except FileNotFoundError:
+            pass
+        if all_files is not None:
+            all_files.append(merge_path)
 
-#        with open(f'checkums_{parameter}.csv', 'w') as fout:
-#            writer = csv.writer(fout)
-#            for pf in pfiles_nc:
-#                writer.writerow([pf['fname'], pf['domain_checksum1'], pf['domain_checksum2']])
+        # Go through each file
+        blacklist = get_blacklist(**attrs)
+        for ix,pf_tif in enumerate(pfiles_tif):
 
-        # Merge this individual component and sort by time using "mergetime"
-        ofname = os.path.join(
-            odir,
-            '{source}_{grid}_{parameter}_merged.nc'.format(**atrs))
+            # Don't iterate over blacklisted items
+            if pf_tif.leaf in blacklist:
+                continue
 
-        inputs = [os.path.join(pf['dir'], pf['fname']) for pf in pfiles_nc]
-        cdo.mergetime(input=inputs,
-            output=ofname, options="-f nc4 -z zip_2")
+            print('{}: {}'.format(ix, pf_tif.path))
 
-    ofnames.append(ofname)
+            # Cut it off early
+            if ix >= max_files:
+                break
 
-    for pf in pfiles_nc:
-        # Create the final merged file
-        cdo.merge(
-            input=ofnames,
-            output=ofpattern.format(*attrs),
-            options="-f nc4 -z zip_2")
+            # Convert to NetCDF
+            pf_nc = tiff_to_netcdf(pf_tif, odir, all_files=all_files)
+
+            # Determine if it covers Jakobshavn
+            if not filter_nc_fn(pf_nc):
+                continue
+
+            # Merge into the mergefile
+            cdo.mergetime(input=(pf_nc.path,),
+                output=merge_path, options="-f nc4 -z zip_2")
+
+
+#    for pf in pfiles_nc:
+#        # Create the final merged file
+#        cdo.merge(
+#            input=ofnames,
+#            output=ofpattern.format(*attrs),
+#            options="-f nc4 -z zip_2")
 
 #print(domain_checksum('outputs/TSX_W69.10N_03Mar09_14Mar09_10-05-12_vx_v02.0.nc', 'vx'))
 
 #sys.exit(0)
 
+all_files = list()
 merge_glacier('data', 'outputs', '{source}_{grid}_2008_2020.nc',
-    ('vx',), source='TSX', grid='W69.10N')
+    ('vx',), source='TSX', grid='W69.10N',
+    filter_nc_fn = in_rectangle((373,413),(387,439)),
+    all_files=all_files, max_files=10)
+
 #    ('vx', 'vy', 'vv'), source='TSX', grid='W69.10N')
