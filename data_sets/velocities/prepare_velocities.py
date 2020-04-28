@@ -98,7 +98,7 @@ def in_rectangle(xx, yy):
 
 
 # --------------------------------------------------------------
-def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=99999999, all_files=None, **attrs0):
+def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=99999999, **attrs0):
     """attrs should contain soure, grid
     ofpattern:
         Eg: '{source}_{grid}_2008_2020.nc'
@@ -170,11 +170,13 @@ def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=999
 
 
     # Create the final merged file
-    print(mergefiles)
-    cdo.merge(
-        input=mergefiles,
-        output=ofpattern.format(**attrs0),
-        options="-f nc4 -z zip_2")
+    ofile = ofpattern.format(**attrs0)
+    if not os.path.exists(ofile):
+        print('Merging to {}'.format(ofile))
+        cdo.merge(
+            input=mergefiles,
+            output=ofile,
+            options="-f nc4 -z zip_2")
 
 #print(domain_checksum('outputs/TSX_W69.10N_03Mar09_14Mar09_10-05-12_vx_v02.0.nc', 'vx'))
 
@@ -182,9 +184,12 @@ def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=999
 
 all_files = list()
 merge_glacier('data', 'outputs', os.path.join('outputs', '{source}_{grid}_2008_2020.nc'),
-    ('vx','vy',), source='TSX', grid='W69.10N',
+    ('vx','vy',),
+    attrs0=dict(source='TSX', grid='W69.10N'),
     filter_nc_fn = in_rectangle((373,413),(387,439)),
-    all_files=all_files,
-    max_files=10000)
+    all_files=all_files)
+
+for file in all_files:
+    os.remove(file)
 
 #    ('vx', 'vy', 'vv'), source='TSX', grid='W69.10N')

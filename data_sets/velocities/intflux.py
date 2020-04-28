@@ -9,6 +9,8 @@ from giss import memoize
 import importlib
 flux_gate_analysis = importlib.import_module('gris-analysis.flux-gates.flux-gate-analysis')
 import scipy.interpolate
+import numpy as np
+import cf_units
 
 GlacierInfo = collections.namedtuple('GlacierInfo', (
     'nsidc_name',            # Code used in NSDIC-0481 dataset
@@ -37,11 +39,11 @@ def flux_across_gate(fluxgate, x, y, vx, vy):
     # Obtain interpolated velocity fields, evaluated at flux gate points
     vxy = list()
     for vel in (vx,vy):
-
+        mgy, mgx = np.meshgrid(y,x)
         spline = scipy.interpolate.RectBivariateSpline(
             x,y, vel,
-            kx=1, ky=1, grid=True)    # 1st degree bivariate spline (linear interpolation)
-        data_at_points = spline(fluxgate.x, fluxgate.y)
+            kx=1, ky=1)    # 1st degree bivariate spline (linear interpolation)
+        data_at_points = spline(fluxgate.x, fluxgate.y, grid=False)
         vxy.append(data_at_points)
 
     # Inner product interpolated velocity field with fluxgate normal vectors
@@ -69,14 +71,16 @@ def intflux(raster_path_pat, fluxgates_path, glaciers):
             xx = nc.variables['x'][:]
             yy = nc.variables['y'][:]
             times = nc.variables['time'][:]
+            time_units = nc.variables['time'].units
 
             for time_ix in range(0,len(times)):
                 vx = nc.variables['vx'][time_ix,:,:].transpose()
                 vy = nc.variables['vy'][time_ix,:,:].transpose()
-                print(vx.shape)
 
                 flux = flux_across_gate(fluxgate, xx, yy, vx, vy)
-                yield (times[time_ix], gl.nsidc_name, flux)
+                dt = cf_units.num2date(times[time_ix], time_units, cf_units.CALENDAR_STANDARD)
+
+                yield (dt, times[time_ix], gl.nsidc_name, flux)
 
 
 def main():
