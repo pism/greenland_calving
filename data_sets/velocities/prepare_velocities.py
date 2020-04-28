@@ -11,6 +11,7 @@ import gc
 import netCDF4
 import numpy as np
 import csv
+from giss import ioutil,iopfile,nsidc,cdoutil
 
 reftime = "2008-01-01"
 components = ["vx", "vy", "vv"]
@@ -56,191 +57,6 @@ blacklist_raw = (
 def get_blacklist(**kwargs):
     return set(x.format(**kwargs) for x in blacklist_raw)
 
-# ----------------------------------------------------
-
-def up_to_date(ipaths, opaths):
-    """Returns True if the files in opaths exist, and are all newer than
-    the files in ipaths"""
-    
-    # Get oldest time of opaths (ms since the epoch)
-    now = datetime.now().timestamp() * 1000.
-    oldest_otime = now
-    for opath in opaths:
-        if not os.path.exists(opath):
-            return False    # Automatically regenerate if it doesn't exist
-        oldest_otime = min(oldest_otime, os.path.getmtime(opath))
-
-    # Get newest itime
-    newest_itime = os.path.getmtime(ipaths[0])
-    for ipath in ipaths[1:]:
-        newest_itime = max(newest_itime, os.path.getmtime(ipath))
-
-    return oldest_otime > newest_itime
-
-# ----------------------------------------------------------------
-def merge_dicts(*dicts):
-    dict = type(dicts[0])(dicts[0].items())
-    for xdict in dicts[1:]:
-        dict.update(xdict.items())
-    return dict
-
-class PFile(dict):
-
-    @property
-    def root(self):
-        return self['dir']
-
-    @property
-    def leaf(self):
-        """The leafname"""
-        return self.format()
-
-    @property
-    def path(self):
-        """Full pathname"""
-        return os.path.join(self['dir'], self.leaf)
-
-
-class NSIDC_0418(PFile):
-
-    key_fn = lambda x: (x['source'], x['grid'], x['startdate'], x['enddate'],
-        x['parameter'], x['nominal_time'], x['version'], x['ext'])
-
-
-    def format(self, **overrides):
-        # Override self with overrides
-        pfile = merge_dicts(self, overrides)
-
-        pfile['sstartdate'] = datetime.strftime(pfile['startdate'], '%d%b%y')
-        pfile['senddate'] = datetime.strftime(pfile['enddate'], '%d%b%y')
-        pfile['snominal_time'] = '{:02d}-{:02d}-{:02d}'.format(*pfile['nominal_time'])
-        # Override ext with user-given value
-        if pfile['parameter'] == '':
-            fmt = '{source}_{grid}_{sstartdate}_{senddate}_{snominal_time}_v{version}{ext}'
-        else:
-            fmt = '{source}_{grid}_{sstartdate}_{senddate}_{snominal_time}_{parameter}_v{version}{ext}'
-
-        return fmt.format(**pfile)
-
-imonth = { 'Jan':1, 'Feb':2, 'Mar':3, 'Apr':4, 'May':5, 'Jun':6, 'Jul':7,
-    'Aug':8, 'Sep':9, 'Oct':10, 'Nov':11, 'Dec':12}
-
-
-reNSIDC_0418 = re.compile(r'(TSX|TDX)_([EWS][0-9.]+[NS])_(\d\d(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\d\d)_(\d\d(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\d\d)_(\d\d)-(\d\d)-(\d\d)(_(vv|vx|vy|ex|ey)?)_v([0-9.]+)(\..+)')
-
-def parse_nsidc_0418(path):
-    """
-    See: https://nsidc.org/data/nsidc-0481"""
-
-    dir,leaf = os.path.split(path)
-
-    match = reNSIDC_0418.match(leaf)
-    if match is None:
-        return None
-
-    sstartdate = match.group(3)
-    senddate = match.group(5)
-    ret = NSIDC_0418(
-        dir=dir,
-        leaf=leaf,
-        source=match.group(1),
-        grid=match.group(2),
-        startdate=datetime.strptime(sstartdate, "%d%b%y"),
-        enddate=datetime.strptime(senddate, "%d%b%y"),
-        nominal_time=(int(match.group(7)), int(match.group(8)), int(match.group(9))),
-        parameter=match.group(11),   # Could be None
-        version=match.group(12),
-        ext=match.group(13))
-
-    if ret['parameter'] is None:
-        ret['parameter'] = ''    # Don't like None for sorting
-
-    return ret
-
-# --------------------------------------------------------------
-def filter_attrs(attrs):
-    """Filteres a pfile if all the given attrs match"""
-    def fn(pfile):
-        # See if it matches attrs
-        match = True
-        for (k,v) in attrs.items():
-            if pfile[k] != v:
-                return False
-        return True
-    return fn
-
-def list_pfiles(dir, parser_fn, filter_fn):
-    """Lists files in a directory, that match the attributes
-    Yields parsed dict output"""
-
-    pfiles = list()
-    for leaf in os.listdir(dir):
-        pfile = parser_fn(os.path.join(dir, leaf))
-        if pfile is None:
-            continue
-
-        if filter_fn(pfile):
-            pfiles.append(pfile)
-
-    pfiles.sort(key=type(pfiles[0]).key_fn)
-
-    return pfiles
-# --------------------------------------------------------------
-def tiff_to_netcdf(pfile, odir, all_files=None, oext='.nc'):
-    """Converts single GeoTIFF to NetCDF
-    ifname:
-        The input GeoTIFF file
-    oext:
-        Extension to use on the output file
-    Returns:
-        Name of the output NetCDF file (as a pfile parsed file)"""
-
-    os.makedirs(odir, exist_ok=True)
-
-    # Generate ofname
-    opfile = type(pfile)(pfile.items())
-    opfile['dir'] = odir
-    opfile['ext'] = oext
-    tmp0 = os.path.join(odir, opfile.format(ext='.tiff_to_netcdf_0.nc'))
-
-    # Don't regenerate files already built
-    if up_to_date((pfile.path,), (opfile.path,)):
-        return opfile
-
-    try:
-        print(f"Converting {ifname} to {ofname}")
-        # use gdal's python binging to convert GeoTiff to netCDF
-        # advantage of GDAL: it gets the projection information right
-        # disadvantage: the variable is named "Band1", lacks metadata
-        ds = gdal.Open(pfile.path)
-        ds = gdal.Translate(tmp0, ds)
-        ds = None
-
-        # This deduces the mid-point (nominal) date from the filename
-        nominal_date = pfile['startdate'] + (pfile['enddate'] - pfile['startdate']) / 2
-
-        # Set the time axis
-        var = pfile['parameter']
-        inputs = [
-            f'-setreftime,{reftime}',
-            f'-setattribute,{var}@units="m year-1"',
-            f'-chname,Band1,{var}',
-            f'{tmp0}']
-        cdo.settaxis(
-            nominal_date.isoformat(),
-            input=' '.join(inputs),
-            output=opfile.path,
-            options="-f nc4 -z zip_2")
-
-        if all_files is not None:
-            all_files.append(opfile.path)
-        return opfile
-    finally:
-        try:
-            os.remove(tmp0)
-        except FileNotFoundError:
-            pass
-
 # --------------------------------------------------------------
 # https://stackoverflow.com/questions/11144513/cartesian-product-of-x-and-y-array-points-into-single-array-of-2d-points
 def np_cartesian_product(x,y):
@@ -279,60 +95,8 @@ def in_rectangle(xx, yy):
 
 
 # --------------------------------------------------------------
-def cdo_merge(inputs, output, options):
-    """Does cdo.merge(), one file at a time"""
-    for input in inputs:
-        cdo.merge(
-            input=(input,),
-            output=output,
-            options=options)
-# --------------------------------------------------------------
-class TmpFiles(object):
-    def __init__(self, root):
-        self.root = root
-        self.next_tmp = 0
-
-    def __next__(self):
-        """Get a tmp filename"""
-        ret = '{}_{}'.format(self.root, self.next_tmp)
-        self.next_tmp += 1
-        return ret
-
-    def __enter__(self):
-        return self
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        for i in range(0,self.next_tmp):
-            try:
-                os.remove('{}_{}'.format(self.root, i))
-            except FileNotFoundError:
-                pass
 
 
-
-max_merge = 30
-def large_merge(cdo_merge_operator, input, output, level=0, **kwargs):
-    """Recursively merge large numbers of files using a CDO merge-type operator
-    cdo_merge_operator:
-        The CDO operator used to merge; Eg: cdo.mergetime
-    """
-
-    print('large_merge', level, input, output)
-
-    odir = os.path.split(output)[0]
-    with TmpFiles(os.path.join(odir, 'tmp_{}'.format(level))) as tmp_files:
-        if len(input) > max_merge:
-
-            input1 = list()
-            chunks = [input[x:x+max_merge] for x in range(0, len(input), max_merge)]
-            for chunk in chunks:
-                ochunk = next(tmp_files)
-                input1.append(ochunk)
-                #print('xxy', level, len(chunk))
-                large_merge(cdo_merge_operator, chunk, ochunk, level=level+1, **kwargs)
-
-            input = input1
-
-        cdo_merge_operator(input=input, output=output, **kwargs)
 # --------------------------------------------------------------
 def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=99999999, all_files=None, **attrs0):
     """attrs should contain soure, grid
@@ -350,7 +114,8 @@ def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=999
         attrs['ext'] = '.tif'
 
         # Get list of .tif files
-        pfiles_tif = list_pfiles(idir, parse_nsidc_0418, filter_attrs(attrs))
+        pfiles_tif = iopfile.listdir(idir, nsidc.parse_0481,
+            iopfile.filter_attrs(attrs))
 
         # Start a new mergefile
         merge_path = os.path.join(
@@ -378,7 +143,7 @@ def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=999
                 break
 
             # Convert to NetCDF
-            pf_nc = tiff_to_netcdf(pf_tif, odir, all_files=all_files)
+            pf_nc = nsidc.tiff_to_netcdf(pf_tif, odir, all_files=all_files, reftime=reftime)
 
 #            # Determine if it covers Jakobshavn
 #            if not filter_nc_fn(pf_nc):
@@ -389,10 +154,11 @@ def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=999
 
 
         # Merge into the mergefile
-        large_merge(
+        cdoutil.large_merge(
             cdo.mergetime,
             input=[x.path for x in pfiles_nc],
-            output=merge_path, options="-f nc4 -z zip_2")
+            output=merge_path, options="-f nc4 -z zip_2",
+            max_merge=10)
 
 
 #    for pf in pfiles_nc:
