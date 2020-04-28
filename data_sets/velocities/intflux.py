@@ -38,10 +38,9 @@ def flux_across_gate(fluxgate, x, y, vx, vy):
     vxy = list()
     for vel in (vx,vy):
 
-        print('xxxxx ',x.shape, y.shape, vel.shape)
         spline = scipy.interpolate.RectBivariateSpline(
             x,y, vel,
-            kx=1, ky=1)    # 1st degree bivariate spline (linear interpolation)
+            kx=1, ky=1, grid=True)    # 1st degree bivariate spline (linear interpolation)
         data_at_points = spline(fluxgate.x, fluxgate.y)
         vxy.append(data_at_points)
 
