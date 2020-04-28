@@ -8,21 +8,16 @@ import pyproj
 from giss import memoize
 import importlib
 flux_gate_analysis = importlib.import_module('gris-analysis.flux-gates.flux-gate-analysis')
-DATA_DIR = os.path.join(os.environ['HOME'], 'data')
-VELOCITIES = 'outputs/TSX_W69.10N_vx_merged.nc'
-
+import scipy.interpolate
 
 GlacierInfo = collections.namedtuple('GlacierInfo', (
-    'nsidc',            # Code used in NSDIC-0481 dataset
-    'fluxgate',        # Name within the fluxgate file
+    'nsidc_name',            # Code used in NSDIC-0481 dataset
+    'fluxgate_name',        # Name within the fluxgate file
 ))
 
 glaciers = (
     GlacierInfo('W69.10N', 'Jakobshavn Isbræ'),
 )
-
-GREENLAND_FLUX_GATES = os.path.join(os.environ['HARNESS'], 'gris-analysis', 'flux-gates', 'greenland-flux-gates-29.shp')
-
 
 def flux_across_gate(fluxgate, x, y, vx, vy):
     """
@@ -41,135 +36,57 @@ def flux_across_gate(fluxgate, x, y, vx, vy):
 
     # Obtain interpolated velocity fields, evaluated at flux gate points
     vxy = list()
-    for vname in ('vx', 'vy'):
+    for vel in (vx,vy):
 
-        spline = scipy.interpolate.RectBivariateSplit(
-            vals['x'], vals['y'], vals[(vname, 'velocity')],
-            1, 1)    # 1st degree bivariate spline (linear interpolation)
+        print('xxxxx ',x.shape, y.shape, vel.shape)
+        spline = scipy.interpolate.RectBivariateSpline(
+            x,y, vel,
+            kx=1, ky=1)    # 1st degree bivariate spline (linear interpolation)
         data_at_points = spline(fluxgate.x, fluxgate.y)
         vxy.append(data_at_points)
 
     # Inner product interpolated velocity field with fluxgate normal vectors
     return sum(vxy[0]*fluxgate.nx) + sum(vxy[1]*fluxgate.ny)
 # -----------------------------------------------------------------------
-def intflux(pathx, pathy, fluxgates):
-    with netCDF4.Dataset(path_vx) as ncx:
-        with netCDF4.Dataset(path_vy) as ncy:
+def intflux(raster_path_pat, fluxgates_path, glaciers):
+
+    # Read the project from any one of our input files
+    with netCDF4.Dataset(raster_path_pat.format(
+        grid=glaciers[0].nsidc_name)) as nc:
+        proj = pyproj.Proj(pypismtools.get_projection_from_file(nc))
+
+    # Load the flux gates (profiles)
+    fluxgates = {prof.name : prof for prof in
+        extract_profiles.load_profiles(fluxgates_path, projection=proj, flip=False)}
+
+    # Read the fluxgates based on that projection
+    for gl in glaciers:
+        fluxgate = fluxgates[gl.fluxgate_name]
+
+        with netCDF4.Dataset(raster_path_pat.format(
+            grid=glaciers[0].nsidc_name)) as nc:
+
             # Read the grid; doesn't matter which file they are both the same
-            xx = ncx.variables['x'][:]
-            yy = ncx.variables['y'][:]
+            xx = nc.variables['x'][:]
+            yy = nc.variables['y'][:]
             times = nc.variables['time'][:]
 
             for time_ix in range(0,len(times)):
-                vx = ncx.variables['vx'][time_ix,:,:]
-                vy = ncy.variables['vy'][time_ix,:,:]
+                vx = nc.variables['vx'][time_ix,:,:].transpose()
+                vy = nc.variables['vy'][time_ix,:,:].transpose()
+                print(vx.shape)
 
-                for fluxgate in fluxgates:
-                    flux = flux_across_gate(fluxgate, x, y, vx, vy)
-                    yield (times[time_ix], fluxgate.name, flux_across_gat
-
-
-def intflux(raster_dir, source, grid, fluxgates):
-    """
-    fluxgates:
-        List of fluxgate Profiles over which to integrate
-    """
-
-    vals = giutil.LambdaDict()
-    for parameter in ('vx', 'vy'):
-        os.path.join(raster_dir, '{}_{}_{}_merged.nc'.format(source, grid, parameter))
-        vals.lazy[('vx', 'velocity')] = lambda: 
-$$$
-
-
-@memoize.local()
-def get_proj():
-    """Gets the (single) projection used for all glaciers in this project.
-    Do so by looking into a single file for a single glacier; assuming all are the same."""
-    gl = glaciers[0]    # Pick a glacier, any glacier
-
-    # Obtain a projection from the raster file
-    raster_path_fmt = os.path.join('outputs', 'TSX_{}_{}_merged.nc')
-    with netCDF4.Dataset(raster_path_fmt.format(gl.nsidc, 'vx')) as nc:
-        return pyproj.Proj(pypismtools.get_projection_from_file(nc))
-
-@memoize.local()
-def get_fluxgates(**kwargs):
-    """Loads the flux gate profiles
-    Kwargs include:
-    flip:
-        Flip the direction of the fluxgate?"""
-    proj = get_proj()
-    return {prof.name : prof for prof in
-        extract_profiles.load_profiles(GREENLAND_FLUX_GATES, projection=proj, **kwargs)}
-
-
-def do_glacier(gl, pfile):
-    fluxgate = get_fluxgates(flip=False)[gl.fluxgate]    # Type: Profile
-    print(type(fluxgate))
-    pfile = dict(pfile_base.items())
-
-    # Obtain interpolated velocity fields, evaluated at flux gate points
-    vxy = list()
-    for vname in ('vx', 'vy'):
-        ncpath = os.path.join('outputs', '{}_{}_{}_merged.nc'.format(pfile['source'], pfile['grid'], vname))
-
-        with netCDF4.Dataset(ncpath, 'r') as nc:
-            # get the dimensions (string names)
-            xsdim, ysdim, zsdim, tsdim = pypismtools.get_dims(nc)
-
-            # Read the grid
-            xx = nc.variables[xsdim][:]
-            yy = nc.variables[ysdim][:]
-
-            # Read the data.  NOTE: NetCDF file is data(y,x)
-            data = nc.variables[vname][:].transpose()
-
-        spline = scipy.interpolate.RectBivariateSplit(
-            x, y, data,
-            1, 1)    # 1st degree bivariate spline (linear interpolation)
-        data_at_points = spline(fluxgate.x, fluxgate.y)
-        vxy.append(data_at_points)
-
-    # Inner product interpolated velocity field with fluxgate normal vectors
-    return sum(vxy[0]*fluxgate.nx) + sum(vxy[1]*fluxgate.ny)
-
-
-
-
-
-get_data('vx', 
-
-'x'
-'y'
-('vx', 'data')
-('vy', 'data')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                flux = flux_across_gate(fluxgate, xx, yy, vx, vy)
+                yield (times[time_ix], gl.nsidc_name, flux)
 
 
 def main():
     # Read a shapefile
-    do_glacier(glaciers[0])
-    return
+    for x in intflux(
+        os.path.join('outputs', 'TSX_{grid}_2008_2020.nc'),
+        os.path.join(os.environ['HARNESS'], 'gris-analysis', 'flux-gates', 'greenland-flux-gates-29.shp'),
+        glaciers):
+
+        print(x)
 
 main()

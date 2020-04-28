@@ -107,6 +107,7 @@ def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=999
 
     # for parameter in ('vx', 'vy', 'vv'):
     ofnames = []
+    mergefiles = list()
     for parameter in parameters:
         # Convert GeoTIFF to NetCDF
         attrs = dict(attrs0.items())
@@ -120,12 +121,18 @@ def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=999
         # Start a new mergefile
         merge_path = os.path.join(
             odir, '{source}_{grid}_{parameter}_merged.nc'.format(**attrs))
-        try:
-            os.remove(merge_path)
-        except FileNotFoundError:
-            pass
+        mergefiles.append(merge_path)
         if all_files is not None:
             all_files.append(merge_path)
+
+
+        if os.path.exists(merge_path):
+            continue
+
+#        try:
+#            os.remove(merge_path)
+#        except FileNotFoundError:
+#            pass
 
         # Go through each file
         pfiles_nc = list()
@@ -154,27 +161,28 @@ def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=999
 
 
         # Merge into the mergefile
-        cdoutil.large_merge(
-            cdo.mergetime,
-            input=[x.path for x in pfiles_nc],
-            output=merge_path, options="-f nc4 -z zip_2",
-            max_merge=10)
+        if not os.path.exists(merge_path):
+            cdoutil.large_merge(
+                cdo.mergetime,
+                input=[x.path for x in pfiles_nc],
+                output=merge_path, options="-f nc4 -z zip_2",
+                max_merge=50)
 
 
-#    for pf in pfiles_nc:
-#        # Create the final merged file
-#        cdo.merge(
-#            input=ofnames,
-#            output=ofpattern.format(*attrs),
-#            options="-f nc4 -z zip_2")
+    # Create the final merged file
+    print(mergefiles)
+    cdo.merge(
+        input=mergefiles,
+        output=ofpattern.format(**attrs0),
+        options="-f nc4 -z zip_2")
 
 #print(domain_checksum('outputs/TSX_W69.10N_03Mar09_14Mar09_10-05-12_vx_v02.0.nc', 'vx'))
 
 #sys.exit(0)
 
 all_files = list()
-merge_glacier('data', 'outputs', '{source}_{grid}_2008_2020.nc',
-    ('vx',), source='TSX', grid='W69.10N',
+merge_glacier('data', 'outputs', os.path.join('outputs', '{source}_{grid}_2008_2020.nc'),
+    ('vx','vy',), source='TSX', grid='W69.10N',
     filter_nc_fn = in_rectangle((373,413),(387,439)),
     all_files=all_files,
     max_files=10000)
