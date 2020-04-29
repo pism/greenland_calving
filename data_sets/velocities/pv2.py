@@ -95,6 +95,7 @@ class MakeRun(object):
             if target in self.makefile.rules:
                 rule = self.makefile.rules[target]
                 input_dates = self.get_dates(rule.inputs)  # [(date,max_sub), ...]
+                print('xxx ',target, date, max_sub)
                 max_input_date = max(max(date, max_sub) for date,max_sub in input_dates)
             else:
                 max_input_date = None
