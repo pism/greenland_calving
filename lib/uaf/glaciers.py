@@ -1,23 +1,7 @@
-#from netCDF4 import Dataset as NC
-#from cdo import Cdo
-#cdo = Cdo()
-#from datetime import datetime, timedelta
-#from osgeo import gdal
-#from glob import glob
-#import os.path
-#import time
-#import collections,re,sys
-#import gc
-#import netCDF4
-#import numpy as np
-#import csv
-#from giss import ioutil,iopfile,nsidc,cdoutil
-#import inspect
-#import collections
-#import itertools
 import os
 from cdo import Cdo
-from giss import giutil,nsidc,cdoutil
+from uaf import nsidc
+from giss import giutil,cdoutil
 
 # -------------------------------------------------------------------------
 class merge_component(object):

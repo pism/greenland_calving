@@ -1,5 +1,6 @@
 import os
-from giss import make,glaciers
+from giss import make
+from uaf import glaciers
 
 
 def main():
