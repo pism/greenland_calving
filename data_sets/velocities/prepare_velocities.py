@@ -13,6 +13,12 @@ import numpy as np
 import csv
 from giss import ioutil,iopfile,nsidc,cdoutil
 
+
+
+
+
+
+
 reftime = "2008-01-01"
 components = ["vx", "vy", "vv"]
 download_dir = "data"
@@ -95,8 +101,6 @@ def in_rectangle(xx, yy):
 
 
 # --------------------------------------------------------------
-
-
 # --------------------------------------------------------------
 def merge_glacier(idir, odir, ofpattern, parameters, filter_nc_fn, max_files=99999999, **attrs0):
     """attrs should contain soure, grid
