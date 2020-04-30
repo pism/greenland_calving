@@ -11,6 +11,10 @@ flux_gate_analysis = importlib.import_module('gris-analysis.flux-gates.flux-gate
 import scipy.interpolate
 import numpy as np
 import cf_units
+import pickle
+from giss import make
+import subprocess
+import pandas as pd
 
 GlacierInfo = collections.namedtuple('GlacierInfo', (
     'nsidc_name',            # Code used in NSDIC-0481 dataset
@@ -47,49 +51,118 @@ def flux_across_gate(fluxgate, x, y, vx, vy):
         vxy.append(data_at_points)
 
     # Inner product interpolated velocity field with fluxgate normal vectors
-    return sum(vxy[0]*fluxgate.nx) + sum(vxy[1]*fluxgate.ny)
+    # Normal flux (scalar) at each point in flux gate
+    flux_along_profile = (vxy[0]*fluxgate.nx) + (vxy[1]*fluxgate.ny)
+    return np.trapz(flux_along_profile, fluxgate.distance_from_start)
 # -----------------------------------------------------------------------
-def intflux(raster_path_pat, fluxgates_path, glaciers):
+class intflux(object):
 
-    # Read the project from any one of our input files
-    with netCDF4.Dataset(raster_path_pat.format(
-        grid=glaciers[0].nsidc_name)) as nc:
-        proj = pyproj.Proj(pypismtools.get_projection_from_file(nc))
+    def __init__(self, makefile, glaciers, raster_paths, fluxgates_path, output):
+        self.glaciers = glaciers
+        self.raster_paths = raster_paths
+        self.fluxgates_path = fluxgates_path
+        inputs = list(raster_paths) + [fluxgates_path]
+        self.rule = makefile.add(self.run, inputs, [output])
 
-    # Load the flux gates (profiles)
-    fluxgates = {prof.name : prof for prof in
-        extract_profiles.load_profiles(fluxgates_path, projection=proj, flip=False)}
+    def run(self):
 
-    # Read the fluxgates based on that projection
-    for gl in glaciers:
-        fluxgate = fluxgates[gl.fluxgate_name]
+        # Read the projection from any one of our input files
+#        with netCDF4.Dataset(raster_path_pat.format(
+#            grid=glaciers[0].nsidc_name)) as nc:
+        with netCDF4.Dataset(self.raster_paths[0]) as nc:
+            proj = pyproj.Proj(pypismtools.get_projection_from_file(nc))
 
-        with netCDF4.Dataset(raster_path_pat.format(
-            grid=glaciers[0].nsidc_name)) as nc:
+        # Load the flux gates (profiles)
+        fluxgates = {prof.name : prof for prof in
+            extract_profiles.load_profiles(self.fluxgates_path, projection=proj, flip=False)}
 
-            # Read the grid; doesn't matter which file they are both the same
-            xx = nc.variables['x'][:]
-            yy = nc.variables['y'][:]
-            times = nc.variables['time'][:]
-            time_units = nc.variables['time'].units
+        # Read the fluxgates based on that projection
+        results = list()
+        for gl,raster_path in zip(glaciers, self.raster_paths):
+            fluxgate = fluxgates[gl.fluxgate_name]
 
-            for time_ix in range(0,len(times)):
-                vx = nc.variables['vx'][time_ix,:,:].transpose()
-                vy = nc.variables['vy'][time_ix,:,:].transpose()
+#            with netCDF4.Dataset(raster_path_pat.format(
+#                grid=glaciers[0].nsidc_name)) as nc:
+            with netCDF4.Dataset(raster_path) as nc:
 
-                flux = flux_across_gate(fluxgate, xx, yy, vx, vy)
-                dt = cf_units.num2date(times[time_ix], time_units, cf_units.CALENDAR_STANDARD)
+                # Read the grid; doesn't matter which file they are both the same
+                xx = nc.variables['x'][:]
+                yy = nc.variables['y'][:]
+                times = nc.variables['time'][:]
+                time_units = nc.variables['time'].units
 
-                yield (dt, times[time_ix], gl.nsidc_name, flux)
+#                for time_ix in range(0,len(times)):
+                for time_ix in range(0,8):
+                    vx = nc.variables['vx'][time_ix,:,:].transpose()
+                    vy = nc.variables['vy'][time_ix,:,:].transpose()
+
+                    flux = flux_across_gate(fluxgate, xx, yy, vx, vy)
+                    dt = cf_units.num2date(times[time_ix], time_units, cf_units.CALENDAR_STANDARD)
+
+                    result = (dt, gl.nsidc_name, flux)
+                    print(result)
+                    results.append(result)
+
+        # Write it out
+        df = pd.DataFrame(results, columns=['date', 'glacier', 'flux'])
+        df.to_pickle(self.rule.outputs[0])
+
+
+class epsg_profiles(object):
+    def __init__(self, makefile, ipath, odir):
+        idir,ileaf = os.path.split(ipath)
+        iroot,ext = os.path.splitext(ileaf)
+        opath = '{}_epsg3413{}'.format(iroot,ext)
+        self.rule = makefile.add(self.run, (ipath,), (opath,))
+
+    def run(self):
+        cmd = ['ogr2ogr', '-t_srs', 'epsg:3413', self.rule.outputs[0], self.rule.inputs[0]]
+        subprocess.run(cmd)
+
+class sample_profiles(object):
+    def __init__(self, makefile, ipath, nsamples, odir):
+        self.nsamples = nsamples
+        rule = epsg_profiles(makefile, ipath, odir).rule
+
+        idir,ileaf = os.path.split(ipath)
+        iroot,ext = os.path.splitext(ileaf)
+        outputs = [
+            os.path.join(odir, '{}_{}m{}'.format(iroot,nsamples,ext))
+            for ext in ('.shp', '.shx', '.prj', '.dbf')]
+        self.rule = makefile.add(self.run, [rule.outputs[0]], outputs)
+
+    def run(self):
+        cmd = ['ogr2ogr', '-t_srs', 'epsg:3413',
+            '-segmentize', str(self.nsamples),
+            self.rule.outputs[0], self.rule.inputs[0]]
+        subprocess.run(cmd)
 
 
 def main():
-    # Read a shapefile
-    for x in intflux(
-        os.path.join('outputs', 'TSX_{grid}_2008_2020.nc'),
-        os.path.join(os.environ['HARNESS'], 'gris-analysis', 'flux-gates', 'greenland-flux-gates-29.shp'),
-        glaciers):
+    makefile = make.Makefile()
 
-        print(x)
+    odir = 'outputs'
+    r_sample_profiles = sample_profiles(
+        makefile,
+        os.path.join(os.environ['HARNESS'], 'gris-analysis', 'flux-gates', 'greenland-flux-gates-29.shp'),
+        50, odir).rule
+
+    raster_paths = [os.path.join(odir, 'TSX_{}_2008_2020.nc'.format(gl.nsidc_name)) for gl in glaciers]
+
+    r_intflux = intflux(
+        makefile, glaciers, raster_paths, r_sample_profiles.outputs[0],
+        os.path.join(odir, 'intflux.pik')).rule
+
+
+    # Outputs we want to keep
+    outputs = r_sample_profiles.outputs + r_intflux.outputs
+    make.build(makefile, outputs)
+    # make.cleanup(makefile, outputs)
+
+
+    # Print result
+    df = pd.read_pickle(r_intflux.outputs[0])
+    print(df)
+
 
 main()
