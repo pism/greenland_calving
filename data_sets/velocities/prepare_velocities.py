@@ -1,7 +1,6 @@
 import os
 import itertools
-from giss import make
-from uaf import glaciers
+from uafgi import make,glaciers
 import sys
 sys.path.append('.')
 import data

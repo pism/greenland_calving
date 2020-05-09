@@ -5,14 +5,13 @@ import netCDF4
 from pypismtools import pypismtools
 from pypismtools.scripts import extract_profiles
 import pyproj
-from giss import memoize
+from uafgi import memoize,make
 import importlib
 flux_gate_analysis = importlib.import_module('gris-analysis.flux-gates.flux-gate-analysis')
 import scipy.interpolate
 import numpy as np
 import cf_units
 import pickle
-from giss import make
 import subprocess
 import pandas as pd
 
