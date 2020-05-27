@@ -31,7 +31,7 @@ def main():
         rule = glaciers.merge(makefile, 'data', nsidc0481.parse, os.path.join(ODIR, 'velocity'),
             os.path.join(ODIR, '{source}_{grid}_2008_2020.nc'),
             ('vx','vy'),
-            max_files=3,
+#            max_files=3,
             filter_attrs=filter_attrs,
             blacklist=nsidc0481.blacklist).rule
 
@@ -40,20 +40,20 @@ def main():
         velocity_file = rule.outputs[0]
         outputs.append(velocity_file)
 
-    # Fixup bedmachine file
-    if args.local:
-        bedmachine_file = os.path.join(ODIR, 'bedmachine', 'BedMachineGreenland-2017-09-20_pism.nc4')
-    else:
-        rule = bedmachine.fixup_pism(makefile, BEDMACHINE_FILE, os.path.join(ODIR, 'bedmachine'))
-        bedmachine_file = rule.outputs[0]
-        outputs.append(bedmachine_file)
-
-    # Compute calving based on velocity file
-    rule = calving.compute(
-        makefile, bedmachine_file, velocity_file,
-        (velocity_file,('u_ssa_bc',)),
-        CALVING_OUTPUT).rule
-    outputs.extend(rule.outputs)
+#    # Fixup bedmachine file
+#    if args.local:
+#        bedmachine_file = os.path.join(ODIR, 'bedmachine', 'BedMachineGreenland-2017-09-20_pism.nc4')
+#    else:
+#        rule = bedmachine.fixup_pism(makefile, BEDMACHINE_FILE, os.path.join(ODIR, 'bedmachine'))
+#        bedmachine_file = rule.outputs[0]
+#        outputs.append(bedmachine_file)
+#
+#    # Compute calving based on velocity file
+#    rule = calving.compute(
+#        makefile, bedmachine_file, velocity_file,
+#        (velocity_file,('u_ssa_bc',)),
+#        CALVING_OUTPUT).rule
+#    outputs.extend(rule.outputs)
 
     # -------------------------------------------------------------
 
