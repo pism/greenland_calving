@@ -1,3 +1,6 @@
+406,407
+423,419
+
 import scipy.sparse
 import numpy as np
 import netCDF4
@@ -159,10 +162,15 @@ def curl_matrix(d_dyx, vvel2,uvel2, dmap, dyx, smap, rows,cols,vals,bb,
         Shape of the original finite difference grid
     """
     # curl = del x F = dF_y/dx - dFX/dy
-    d_dx_sub(vvel2, dyx[0], smap, rows,cols,vals,bb,
+    d_dyx[0](vvel2, dmap, dyx[0], smap, rows,cols,vals,bb,
         factor=factor, rowoffset=rowoffset)
-    d_dy_sub(uvel2, dyx[1], smap, rows,cols,vals,bb,
+    d_dyx[1](uvel2, dmap, dyx[1], smap, rows,cols,vals,bb,
         factor=-factor, rowoffset=rowoffset, coloffset=len(smap))
+
+# -------------------------------------------------------
+def cut_subset(val):
+    subval = val[406:420, 406:420]
+    return subval
 
 # -------------------------------------------------------
 #def remove_singletons(domain2):
@@ -188,8 +196,6 @@ def remove_singletons(domain2, dmap2):
     dmap2:
         Change to D_UNUSED in this  variable"""
 
-    print('XX BEFORE: {}'.format(domain2[233:236,387]))
-
     nremoved = 1
     while nremoved > 0:
         nremoved = 0
@@ -205,8 +211,6 @@ def remove_singletons(domain2, dmap2):
                         nremoved += 1
 
         print('nremoved = {}'.format(nremoved))
-
-    print('XX AFTER: {}'.format(domain2[233:236,387]))
 
     return domain2
 
@@ -228,10 +232,17 @@ def main():
 
         print('Fill Value {}'.format(nc_uvel._FillValue))
 
+
+    vvel2 = cut_subset(vvel2)
+    uvel2 = cut_subset(uvel2)
+
     # ------------ Read amount of ice (thickness)
     rhoice = 918.    # [kg m-3]: Convert thickness from [m] to [kg m-2]
     with netCDF4.Dataset('outputs/bedmachine/W69.10N-thickness.nc') as nc:
         amount2 = nc.variables['thickness'][:] * rhoice
+
+    amount2 = cut_subset(amount2)
+
 
     # ------------ Set up the domain map (classify gridcells)
     dmap2 = np.zeros(vvel2.shape, dtype='i') + D_UNUSED
@@ -240,6 +251,12 @@ def main():
         amount2 > 0,
         np.isnan(vvel2)
         ))] = D_MISSING
+
+    # Make an "unused" border
+    dmap2[0,:] = D_UNUSED
+    dmap2[-1,:] = D_UNUSED
+    dmap2[:,0] = D_UNUSED
+    dmap2[:,-1] = D_UNUSED
 
     # ------------ Select subspace of gridcells on which to operate
     process_present = True
@@ -258,6 +275,12 @@ def main():
     smap = SubMap(subj,subi)
 
 
+    # ---------- Put in a test value
+#    for j in range(0,vvel2.shape[0]):
+#        for i in range(0,vvel2.shape[1]):
+#            vvel2[j,i] = i
+#            uvel2[j,i] = i
+
     # ----------- Store it
     with netCDF4.Dataset('dmap.nc', 'w') as nc:
         nc.createDimension('y', vvel2.shape[0])
@@ -269,8 +292,6 @@ def main():
         ncv = nc.createVariable('domain', 'i', ('y','x'))
         ncv[:] = domain2[:]
 
-
-
     # ------------ Set up for div/curl matrix
     rows = list()
     cols = list()
@@ -281,7 +302,7 @@ def main():
     dyx = (5000, 5000)
     present = True
     div_matrix(d_dyx_fns[present], vvel2,uvel2, dmap2, dyx, smap, rows,cols,vals,bb)
-
+    curl_matrix(d_dyx_fns[present], vvel2,uvel2, dmap2, dyx, smap, rows,cols,vals,bb)
 
     n1 = len(smap)
     M = scipy.sparse.coo_matrix((vals, (rows,cols)),
@@ -312,6 +333,10 @@ def main():
         ncv[:] = amount2[:]
         ncv = nc.createVariable('domain', 'i', ('y','x'))
         ncv[:] = domain2[:]
+        ncv = nc.createVariable('vvel', 'i', ('y','x'))
+        ncv[:] = vvel2[:]
+        ncv = nc.createVariable('uvel', 'i', ('y','x'))
+        ncv[:] = uvel2[:]
         ncv = nc.createVariable('div', 'd', ('y','x'))
         ncv[:] = div2
 
