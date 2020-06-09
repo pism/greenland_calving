@@ -233,15 +233,15 @@ def main():
         print('Fill Value {}'.format(nc_uvel._FillValue))
 
 
-    vvel2 = cut_subset(vvel2)
-    uvel2 = cut_subset(uvel2)
+#    vvel2 = cut_subset(vvel2)
+#    uvel2 = cut_subset(uvel2)
 
     # ------------ Read amount of ice (thickness)
     rhoice = 918.    # [kg m-3]: Convert thickness from [m] to [kg m-2]
     with netCDF4.Dataset('outputs/bedmachine/W69.10N-thickness.nc') as nc:
         amount2 = nc.variables['thickness'][:] * rhoice
 
-    amount2 = cut_subset(amount2)
+#    amount2 = cut_subset(amount2)
 
 
     # ------------ Set up the domain map (classify gridcells)
@@ -264,15 +264,14 @@ def main():
         # Select cells with data
         domain2 = (dmap2 == D_DATA)
         remove_singletons(domain2, dmap2)
-        d_dyx = d_dyx_fns[True]    # present=True
     else:
         # Select NaN cells
         domain2 = remove_singletons(dmap2 != D_UNUSED, dmap2)
-        d_dyx = d_dyx_fns[False]    # present=False
         domain2 = (dmap2 == D_MISSING)
 
     subj,subi = np.where(domain2)
     smap = SubMap(subj,subi)
+    n1 = len(smap)
 
 
     # ---------- Put in a test value
@@ -300,13 +299,11 @@ def main():
 
     # ------------ Create div matrix and RHS
     dyx = (5000, 5000)
-    present = True
-    div_matrix(d_dyx_fns[present], vvel2,uvel2, dmap2, dyx, smap, rows,cols,vals,bb)
-    curl_matrix(d_dyx_fns[present], vvel2,uvel2, dmap2, dyx, smap, rows,cols,vals,bb)
+    div_matrix(d_dyx_fns[process_present], vvel2,uvel2, dmap2, dyx, smap, rows,cols,vals,bb)
+    curl_matrix(d_dyx_fns[process_present], vvel2,uvel2, dmap2, dyx, smap, rows,cols,vals,bb, rowoffset=n1)
 
-    n1 = len(smap)
     M = scipy.sparse.coo_matrix((vals, (rows,cols)),
-        shape=(n1, n1*2))
+        shape=(n1*2, n1*2))
 
 
     # ------------ Construct vu vector based on smap
@@ -315,12 +312,21 @@ def main():
     vu_s[n1:] = uvel2[smap.sub2j, smap.sub2i]
 
     # ------------ Get result in subspace
-    div_s = M * vu_s
-#    print('div_s ',div_s)
+    if process_present:
+        divcurl_s = M * vu_s
+        div_s = divcurl_s[:n1]
+        curl_s = divcurl_s[n1:]
 
-    # ------------ Convert back to main space
-    div2 = np.zeros(vvel2.shape) + np.nan
-    div2[smap.sub2j, smap.sub2i] = div_s
+        #    print('div_s ',div_s)
+
+        # ------------ Convert back to main space
+        div2 = np.zeros(vvel2.shape) + np.nan
+        div2[smap.sub2j, smap.sub2i] = div_s
+        curl2 = np.zeros(vvel2.shape) + np.nan
+        curl2[smap.sub2j, smap.sub2i] = curl_s
+
+    else:
+        pass
 
 
     # ----------- Store it
@@ -337,8 +343,11 @@ def main():
         ncv[:] = vvel2[:]
         ncv = nc.createVariable('uvel', 'i', ('y','x'))
         ncv[:] = uvel2[:]
-        ncv = nc.createVariable('div', 'd', ('y','x'))
-        ncv[:] = div2
+        if process_present:
+            ncv = nc.createVariable('div', 'd', ('y','x'))
+            ncv[:] = div2
+            ncv = nc.createVariable('curl', 'd', ('y','x'))
+            ncv[:] = curl2
 
 
 main()
