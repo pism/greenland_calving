@@ -1,10 +1,9 @@
-406,407
-423,419
-
+import scipy.sparse.linalg
 import scipy.sparse
 import numpy as np
 import netCDF4
 import sys
+from pism.util import fill_missing_petsc
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -28,16 +27,36 @@ stencil_choice = [
 
 # -------------------------------------------------------
 class SubMap(object):
-    def __init__(self, subj, subi):
+    def __init__(self, shape, subj, subi):
+        self.shape = shape
         self.sub2j = subj
         self.sub2i = subi
         self.ji2sub = {(subj[k],subi[k]) : k for k in range(0,len(subj))}
 #        for x in self.ji2sub.keys():
 #            print(x)
+
+
+        # Location of variables in the mega-vector
+        self.n1 = len(self)
+        self.vubase = 0
+        self.vbase = self.vubase
+        self.ubase = self.n1
+        self.dcbase = self.n1*2
+        self.dbase = self.dcbase
+        self.cbase = self.dbase + self.n1
+
     def __len__(self):
         return len(self.sub2j)
     def transpose(self):
-        return SubMap(self.sub2i, self.sub2j)
+        return SubMap((self.shape[1],self.shape[0]), self.sub2i, self.sub2j)
+
+    def decode(self, val_s, fill_value=np.nan):
+        """Goes from subspace to full vector"""
+        val = np.zeros(self.shape) + fill_value
+        print(len(self.sub2j))
+        print(len(self.sub2i))
+        val[self.sub2j, self.sub2i] = val_s
+        return val
 # -------------------------------------------------------
 def d_dy_missing(data, dmap,dy, smap,  rows,cols,vals,bb, factor=1.0, rowoffset=0, coloffset=0):
     """Produces a matrix for the del operator
@@ -68,7 +87,7 @@ def d_dy_missing(data, dmap,dy, smap,  rows,cols,vals,bb, factor=1.0, rowoffset=
             if dmap[jj2,ii] == D_MISSING:
                 # This cell is also mising; include in the matrix to solve for
                 rows.append(rowoffset + k)
-                cols.append(coloffset + smap.ji2sub(jj2, ii))
+                cols.append(coloffset + smap.ji2sub[jj2, ii])
                 vals.append(factor * stval[l] * bydy)
 
             else:
@@ -108,6 +127,8 @@ def d_dy_present(data, dmap,dy, smap,  rows,cols,vals,bb, factor=1.0, rowoffset=
             rows.append(rowoffset + k)
             cols.append(coloffset + smap.ji2sub[jj2, ii])
             vals.append(factor * stval[l] * bydy)
+
+
 # ----------------------------------------------------------------
 def d_dx_present(data, dmap,dx, smap,  rows,cols,vals,bb,
     factor=1.0, rowoffset=0, coloffset=0):
@@ -216,6 +237,134 @@ def remove_singletons(domain2, dmap2):
 
 
 # -------------------------------------------------------
+def vudc_equations(vv, uu, dmap,dyx, smap, curl_f):
+    """Produces a matrix for the del operator
+       rows,cols,vals:
+            Matrix M
+        bb:
+            Offset: dF/dx = M*vu + bb
+
+
+        Point with data
+        ---------------
+        u = ...
+        v = ...
+        d - l.c. of u/v of self and surrounding points = 0
+        c - l.c. of u/v of self and surrounding points = 0
+
+        Point missing data
+        ------------------
+        d = 0
+        c = (fill value for curl)
+        d - l.c. of u/v of self and surrounding points = 0
+        c - l.c. of u/v of self and surrounding points = 0
+    """
+
+    rows = list()
+    cols = list()
+    vals = list()
+    rhs = list()
+
+    bydy = 1. / dyx[0]
+    bydx = 1. / dyx[1]
+
+
+    for k in range(0,len(smap)):
+        jj = smap.sub2j[k]
+        ii = smap.sub2i[k]
+
+#        print('({}, {}): {}'.format(jj, ii, dmap[jj-1:jj+2,ii]))
+
+        # Decide on stencil, based position in the domain
+        if dmap[jj-1,ii] == D_UNUSED:
+            stencil = right_diff
+        elif dmap[jj+1,ii] == D_UNUSED:
+            stencil = left_diff
+        else:
+            stencil = center_diff
+        stcoo_j,stval_j = stencil
+
+        # Decide on stencil, based position in the domain
+        if dmap[jj,ii-1] == D_UNUSED:
+            stencil = right_diff
+        elif dmap[jj,ii+1] == D_UNUSED:
+            stencil = left_diff
+        else:
+            stencil = center_diff
+        stcoo_i,stval_i = stencil
+
+
+        # Equations differ depending on whether we have data here
+        if dmap[jj,ii] == D_DATA:
+            # <v-variable> = v
+            rows.append(len(rhs))
+            cols.append(smap.vbase + k)
+            vals.append(1.0)
+            rhs.append(vv[jj,ii])
+
+            # <u-variable> = u
+            rows.append(len(rhs))
+            cols.append(smap.ubase + k)
+            vals.append(1.0)
+            rhs.append(uu[jj,ii])
+
+        else:    # No uv here
+            # <div-variable> = 0
+            rows.append(len(rhs))
+            cols.append(smap.dbase + k)
+            vals.append(1.0)
+            rhs.append(0)
+
+            # <curl-variable> = curl-val
+            rows.append(len(rhs))
+            cols.append(smap.cbase + k)
+            vals.append(1.0)
+            rhs.append(curl_f[jj,ii])
+
+
+        # <div-var> - <div formula> = 0
+        cols.append(smap.dbase + k)
+        rows.append(len(rhs))
+        vals.append(1.0)
+        for l in range(0,len(stcoo_j)):
+            jj2 = jj+stcoo_j[l]
+            k2 = smap.ji2sub[jj2,ii]
+            rows.append(len(rhs))
+            cols.append(smap.dbase + k2)
+            vals.append(-stval_j[l] * bydy)
+        for l in range(0,len(stcoo_i)):
+            ii2 = ii+stcoo_i[l]
+            k2 = smap.ji2sub[jj,ii2]
+            rows.append(len(rhs))
+            cols.append(smap.dbase + k2)
+            vals.append(-stval_i[l] * bydx)
+        rhs.append(0)
+
+        # curl - <curl formula> = 0
+        cols.append(smap.dbase + k)
+        rows.append(len(rhs))
+        vals.append(1.0)
+        for l in range(0,len(stcoo_i)):    # dv/dx
+            ii2 = ii+stcoo_i[l]
+            k2 = smap.ji2sub[jj,ii2]
+            rows.append(len(rhs))
+            cols.append(smap.cbase + k2)
+            vals.append(-stval_i[l] * bydx)
+        for l in range(0,len(stcoo_j)):
+            jj2 = jj+stcoo_j[l]
+            k2 = smap.ji2sub[jj2,ii]        # -du/dy
+            rows.append(len(rhs))
+            cols.append(smap.cbase + k2)
+            vals.append(stval_j[l] * bydy)
+        rhs.append(0)
+
+    # Convert to matrix form and return
+    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
+        shape=(smap.n1*4, smap.n1*4)).tocsc()
+    bb = np.array(rhs)
+    return M,bb
+
+# --------------------------------------------------------
 def main():
     # --------- Read uvel and vvel
     t = 0    # Time
@@ -233,15 +382,15 @@ def main():
         print('Fill Value {}'.format(nc_uvel._FillValue))
 
 
-#    vvel2 = cut_subset(vvel2)
-#    uvel2 = cut_subset(uvel2)
+    vvel2 = cut_subset(vvel2)
+    uvel2 = cut_subset(uvel2)
 
     # ------------ Read amount of ice (thickness)
     rhoice = 918.    # [kg m-3]: Convert thickness from [m] to [kg m-2]
     with netCDF4.Dataset('outputs/bedmachine/W69.10N-thickness.nc') as nc:
         amount2 = nc.variables['thickness'][:] * rhoice
 
-#    amount2 = cut_subset(amount2)
+    amount2 = cut_subset(amount2)
 
 
     # ------------ Set up the domain map (classify gridcells)
@@ -270,7 +419,7 @@ def main():
         domain2 = (dmap2 == D_MISSING)
 
     subj,subi = np.where(domain2)
-    smap = SubMap(subj,subi)
+    smap = SubMap(uvel2.shape, subj,subi)
     n1 = len(smap)
 
 
@@ -329,6 +478,28 @@ def main():
         pass
 
 
+    # ---------- Apply Poisson Fill to curl
+    curl2_m = np.ma.array(curl2, mask=(np.isnan(curl2)))
+    curl2_fv,_ = fill_missing_petsc.fill_missing(curl2_m)
+    curl2_f = curl2_fv[:].reshape(curl2.shape)
+
+    # ---------- Redo smap
+    domain2 = remove_singletons(dmap2 != D_UNUSED, dmap2)
+    subj,subi = np.where(domain2)
+    smap = SubMap(uvel2.shape, subj,subi)
+    n1 = len(smap)
+
+    # ---------- Solve for v,u,div,curl simultaneously
+    M,bb = vudc_equations(vvel2, uvel2, dmap2, dyx, smap, curl2_f)
+    vudc,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,bb)
+    n1 = smap.n1
+    print('n1 ',n1)
+    vv3 = smap.decode(vudc[smap.vbase:smap.vbase+n1])
+    uu3 = smap.decode(vudc[smap.ubase:smap.ubase+n1])
+    div3 = smap.decode(vudc[smap.dbase:smap.dbase+n1])
+    curl3 = smap.decode(vudc[smap.cbase:smap.cbase+n1])
+
+
     # ----------- Store it
     with netCDF4.Dataset('x.nc', 'w') as nc:
         nc.createDimension('y', vvel2.shape[0])
@@ -348,6 +519,13 @@ def main():
             ncv[:] = div2
             ncv = nc.createVariable('curl', 'd', ('y','x'))
             ncv[:] = curl2
+            ncv = nc.createVariable('curl_f', 'd', ('y','x'))
+            ncv[:] = curl2_f
+
+        nc.createVariable('vv3', 'd', ('y','x'))[:] = vv3
+        nc.createVariable('uu3', 'd', ('y','x'))[:] = vv3
+        nc.createVariable('div3', 'd', ('y','x'))[:] = div3
+        nc.createVariable('curl3', 'd', ('y','x'))[:] = curl3
 
 
 main()
