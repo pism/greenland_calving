@@ -330,31 +330,31 @@ def vudc_equations(vv, uu, dmap,dyx, smap, curl_f):
             jj2 = jj+stcoo_j[l]
             k2 = smap.ji2sub[jj2,ii]
             rows.append(len(rhs))
-            cols.append(smap.dbase + k2)
+            cols.append(smap.vbase + k2)
             vals.append(-stval_j[l] * bydy)
         for l in range(0,len(stcoo_i)):
             ii2 = ii+stcoo_i[l]
             k2 = smap.ji2sub[jj,ii2]
             rows.append(len(rhs))
-            cols.append(smap.dbase + k2)
+            cols.append(smap.ubase + k2)
             vals.append(-stval_i[l] * bydx)
-        rhs.append(0)
+        rhs.append(0.)
 
         # curl - <curl formula> = 0
-        cols.append(smap.dbase + k)
+        cols.append(smap.cbase + k)
         rows.append(len(rhs))
         vals.append(1.0)
         for l in range(0,len(stcoo_i)):    # dv/dx
             ii2 = ii+stcoo_i[l]
             k2 = smap.ji2sub[jj,ii2]
             rows.append(len(rhs))
-            cols.append(smap.cbase + k2)
+            cols.append(smap.vbase + k2)
             vals.append(-stval_i[l] * bydx)
         for l in range(0,len(stcoo_j)):
             jj2 = jj+stcoo_j[l]
             k2 = smap.ji2sub[jj2,ii]        # -du/dy
             rows.append(len(rhs))
-            cols.append(smap.cbase + k2)
+            cols.append(smap.ubase + k2)
             vals.append(stval_j[l] * bydy)
         rhs.append(0)
 
@@ -492,6 +492,10 @@ def main():
     # ---------- Solve for v,u,div,curl simultaneously
     M,bb = vudc_equations(vvel2, uvel2, dmap2, dyx, smap, curl2_f)
     vudc,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,bb)
+#    vudc = scipy.sparse.linalg.spsolve(M,bb)
+#    ew,ev = scipy.sparse.linalg.eigs(M)
+#    print(ew)
+#    print('eigs ', list(np.abs(x) for x in ew))
     n1 = smap.n1
     print('n1 ',n1)
     vv3 = smap.decode(vudc[smap.vbase:smap.vbase+n1])
@@ -523,7 +527,7 @@ def main():
             ncv[:] = curl2_f
 
         nc.createVariable('vv3', 'd', ('y','x'))[:] = vv3
-        nc.createVariable('uu3', 'd', ('y','x'))[:] = vv3
+        nc.createVariable('uu3', 'd', ('y','x'))[:] = uu3
         nc.createVariable('div3', 'd', ('y','x'))[:] = div3
         nc.createVariable('curl3', 'd', ('y','x'))[:] = curl3
 
