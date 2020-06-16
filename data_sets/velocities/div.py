@@ -182,15 +182,16 @@ def curl_matrix(d_dyx, vvel2,uvel2, dmap, dyx, smap, rows,cols,vals,bb,
     shape:
         Shape of the original finite difference grid
     """
-    # curl = del x F = dF_y/dx - dFX/dy
-    d_dyx[0](vvel2, dmap, dyx[0], smap, rows,cols,vals,bb,
+    # curl = del x F = dF_y/dx - dF_x/dy
+    d_dyx[1](vvel2, dmap, dyx[0], smap, rows,cols,vals,bb,
         factor=factor, rowoffset=rowoffset)
-    d_dyx[1](uvel2, dmap, dyx[1], smap, rows,cols,vals,bb,
+    d_dyx[0](uvel2, dmap, dyx[1], smap, rows,cols,vals,bb,
         factor=-factor, rowoffset=rowoffset, coloffset=len(smap))
 
 # -------------------------------------------------------
 def cut_subset(val):
-    subval = val[406:420, 406:420]
+#    subval = val[406:420, 406:420]
+    subval = val[306:520, 306:520]
     return subval
 
 # -------------------------------------------------------
@@ -237,7 +238,7 @@ def remove_singletons(domain2, dmap2):
 
 
 # -------------------------------------------------------
-def vudc_equations(vv, uu, dmap,dyx, smap, curl_f):
+def vudc_equations(vv, uu, dmap,dyx, smap, div_f, curl_f):
     """Produces a matrix for the del operator
        rows,cols,vals:
             Matrix M
@@ -313,13 +314,15 @@ def vudc_equations(vv, uu, dmap,dyx, smap, curl_f):
             rows.append(len(rhs))
             cols.append(smap.dbase + k)
             vals.append(1.0)
-            rhs.append(0)
+#            rhs.append(0)
+            rhs.append(div_f[jj,ii])
 
             # <curl-variable> = curl-val
             rows.append(len(rhs))
             cols.append(smap.cbase + k)
             vals.append(1.0)
             rhs.append(curl_f[jj,ii])
+#            rhs.append(0)
 
 
         # <div-var> - <div formula> = 0
@@ -483,6 +486,15 @@ def main():
     curl2_fv,_ = fill_missing_petsc.fill_missing(curl2_m)
     curl2_f = curl2_fv[:].reshape(curl2.shape)
 
+#    curl2_f = curl2
+#    curl2_f[np.isnan(curl2)] = 0
+
+    # ---------- Apply Poisson Fill to div
+    div2_m = np.ma.array(div2, mask=(np.isnan(div2)))
+    div2_fv,_ = fill_missing_petsc.fill_missing(div2_m)
+    div2_f = div2_fv[:].reshape(div2.shape)
+
+
     # ---------- Redo smap
     domain2 = remove_singletons(dmap2 != D_UNUSED, dmap2)
     subj,subi = np.where(domain2)
@@ -490,8 +502,10 @@ def main():
     n1 = len(smap)
 
     # ---------- Solve for v,u,div,curl simultaneously
-    M,bb = vudc_equations(vvel2, uvel2, dmap2, dyx, smap, curl2_f)
+    M,bb = vudc_equations(vvel2, uvel2, dmap2, dyx, smap, div2_f, curl2_f)
     vudc,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,bb)
+#        btol=1e-14)
+    print('LSQR ',istop,itn,r1norm,r2norm)
 #    vudc = scipy.sparse.linalg.spsolve(M,bb)
 #    ew,ev = scipy.sparse.linalg.eigs(M)
 #    print(ew)
