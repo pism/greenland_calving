@@ -58,12 +58,11 @@ class SubMap(object):
         val[self.sub2j, self.sub2i] = val_s
         return val
 # -------------------------------------------------------
-def d_dy_missing(data, dmap,dy, smap,  rows,cols,vals,bb, factor=1.0, rowoffset=0, coloffset=0):
+
+def d_dy_present(data, domain,dy, smap,  rows,cols,vals, factor=1.0, rowoffset=0, coloffset=0):
     """Produces a matrix for the del operator
        rows,cols,vals:
             Matrix M
-        bb:
-            Offset: dF/dx = M*vu + bb
     """
     bydy = 1. / dy
 
@@ -71,49 +70,12 @@ def d_dy_missing(data, dmap,dy, smap,  rows,cols,vals,bb, factor=1.0, rowoffset=
         jj = smap.sub2j[k]
         ii = smap.sub2i[k]
 
-        # Decide on stencil, based position in the domain
-        if dmap[jj-1,ii] == D_UNUSED:
-            stencil = right_diff
-        elif dmap[jj+1,ii] == D_UNUSED:
-            stencil = left_diff
-        else:
-            stencil = center_diff
-        stcoo,stval = stencil
-
-        # Apply the stencil
-        for l in range(0,len(stcoo)):
-            jj2 = jj+stcoo[l]
-
-            if dmap[jj2,ii] == D_MISSING:
-                # This cell is also mising; include in the matrix to solve for
-                rows.append(rowoffset + k)
-                cols.append(coloffset + smap.ji2sub[jj2, ii])
-                vals.append(factor * stval[l] * bydy)
-
-            else:
-                # This cell is not missing; add to the RHS
-                bb[rowoffset + k] += factor * stval[l] * data[jj2,ii]
-
-
-def d_dy_present(data, dmap,dy, smap,  rows,cols,vals,bb, factor=1.0, rowoffset=0, coloffset=0):
-    """Produces a matrix for the del operator
-       rows,cols,vals:
-            Matrix M
-        bb:
-            Offset: dF/dx = M*vu + bb
-    """
-    bydy = 1. / dy
-
-    for k in range(0,len(smap)):
-        jj = smap.sub2j[k]
-        ii = smap.sub2i[k]
-
-#        print('({}, {}): {}'.format(jj, ii, dmap[jj-1:jj+2,ii]))
+#        print('({}, {}): {}'.format(jj, ii, domain[jj-1:jj+2,ii]))
 
         # Decide on stencil, based position in the domain
-        if dmap[jj-1,ii] != D_DATA:
+        if not domain[jj-1,ii]:
             stencil = right_diff
-        elif dmap[jj+1,ii] != D_DATA:
+        elif not domain[jj+1,ii]:
             stencil = left_diff
         else:
             stencil = center_diff
@@ -130,29 +92,20 @@ def d_dy_present(data, dmap,dy, smap,  rows,cols,vals,bb, factor=1.0, rowoffset=
 
 
 # ----------------------------------------------------------------
-def d_dx_present(data, dmap,dx, smap,  rows,cols,vals,bb,
+def d_dx_present(data, domain,dx, smap,  rows,cols,vals,
     factor=1.0, rowoffset=0, coloffset=0):
 
-    d_dy_present(np.transpose(data), np.transpose(dmap),dx, smap.transpose(),
-        rows,cols,vals,bb,
+    d_dy_present(np.transpose(data), np.transpose(domain),dx, smap.transpose(),
+        rows,cols,vals,
         factor=factor, rowoffset=rowoffset, coloffset=coloffset)
-
-def d_dx_missing(data, dmap,dx, smap,  rows,cols,vals,bb,
-    factor=1.0, rowoffset=0, coloffset=0):
-
-    d_dy_missing(np.transpose(data), np.transpose(dmap),dx, smap.transpose(),
-        rows,cols,vals,bb,
-        factor=factor, rowoffset=rowoffset, coloffset=coloffset)
-
 # ----------------------------------------------------------------
 # d_dy_fns(present)
 d_dyx_fns = {
     True : (d_dy_present, d_dx_present),
-    False : (d_dy_missing, d_dx_missing),
 }
 
 # ----------------------------------------------------------------
-def div_matrix(d_dyx, vvel2,uvel2, dmap, dyx, smap, rows,cols,vals,bb,
+def div_matrix(d_dyx, vvel2,uvel2, domain, dyx, smap, rows,cols,vals,
     factor=1.0, rowoffset=0):
 
     """Generates a matrix to compute divergence of a vector field.
@@ -166,13 +119,13 @@ def div_matrix(d_dyx, vvel2,uvel2, dmap, dyx, smap, rows,cols,vals,bb,
     shape:
         Shape of the original finite difference grid
     """
-    d_dyx[0](vvel2, dmap, dyx[0], smap, rows,cols,vals,bb,
+    d_dyx[0](vvel2, domain, dyx[0], smap, rows,cols,vals,
         factor=factor, rowoffset=rowoffset)
-    d_dyx[1](uvel2, dmap, dyx[1], smap, rows,cols,vals,bb,
+    d_dyx[1](uvel2, domain, dyx[1], smap, rows,cols,vals,
         factor=factor, rowoffset=rowoffset, coloffset=len(smap))
 
 
-def curl_matrix(d_dyx, vvel2,uvel2, dmap, dyx, smap, rows,cols,vals,bb,
+def curl_matrix(d_dyx, vvel2,uvel2, domain, dyx, smap, rows,cols,vals,
     factor=1.0, rowoffset=0):
     """Generates a matrix to compute divergence of a vector field.
     (v and u are stacked)
@@ -183,10 +136,20 @@ def curl_matrix(d_dyx, vvel2,uvel2, dmap, dyx, smap, rows,cols,vals,bb,
         Shape of the original finite difference grid
     """
     # curl = del x F = dF_y/dx - dF_x/dy
-    d_dyx[1](vvel2, dmap, dyx[0], smap, rows,cols,vals,bb,
+    d_dyx[1](vvel2, domain, dyx[0], smap, rows,cols,vals,
         factor=factor, rowoffset=rowoffset)
-    d_dyx[0](uvel2, dmap, dyx[1], smap, rows,cols,vals,bb,
+    d_dyx[0](uvel2, domain, dyx[1], smap, rows,cols,vals,
         factor=-factor, rowoffset=rowoffset, coloffset=len(smap))
+
+# -------------------------------------------------------
+def dc_matrix(d_dyx, vvel2,uvel2, domain2, dyx, smap, rows,cols,vals,
+    factor=1.0):
+
+    n1 = len(smap)
+
+    div_matrix(d_dyx_fns[True], vvel2,uvel2, domain2, dyx, smap, rows,cols,vals)
+    curl_matrix(d_dyx_fns[True], vvel2,uvel2, domain2, dyx, smap, rows,cols,vals, rowoffset=n1)
+
 
 # -------------------------------------------------------
 def cut_subset(val):
@@ -411,26 +374,14 @@ def main():
     dmap2[:,-1] = D_UNUSED
 
     # ------------ Select subspace of gridcells on which to operate
-    process_present = True
-    if process_present:
-        # Select cells with data
-        domain2 = (dmap2 == D_DATA)
-        remove_singletons(domain2, dmap2)
-    else:
-        # Select NaN cells
-        domain2 = remove_singletons(dmap2 != D_UNUSED, dmap2)
-        domain2 = (dmap2 == D_MISSING)
 
-    subj,subi = np.where(domain2)
+    # Select cells with data
+    # *** TODO: This is wonky
+    domain_data2 = (dmap2 == D_DATA)
+    remove_singletons(domain_data2, dmap2)
+    subj,subi = np.where(domain_data2)
     smap = SubMap(uvel2.shape, subj,subi)
     n1 = len(smap)
-
-
-    # ---------- Put in a test value
-#    for j in range(0,vvel2.shape[0]):
-#        for i in range(0,vvel2.shape[1]):
-#            vvel2[j,i] = i
-#            uvel2[j,i] = i
 
     # ----------- Store it
     with netCDF4.Dataset('dmap.nc', 'w') as nc:
@@ -440,45 +391,37 @@ def main():
         ncv[:] = dmap2[:]
         ncv = nc.createVariable('amount', 'd', ('y','x'))
         ncv[:] = amount2[:]
-        ncv = nc.createVariable('domain', 'i', ('y','x'))
-        ncv[:] = domain2[:]
+        ncv = nc.createVariable('domain_data', 'i', ('y','x'))
+        ncv[:] = domain_data2[:]
 
-    # ------------ Set up for div/curl matrix
+    # ------------ Create div matrix on DATA points
     rows = list()
     cols = list()
     vals = list()
-    bb = np.zeros(len(smap)*2)    # First missing vvels, then missing uvels
-
-    # ------------ Create div matrix and RHS
     dyx = (5000, 5000)
-    div_matrix(d_dyx_fns[process_present], vvel2,uvel2, dmap2, dyx, smap, rows,cols,vals,bb)
-    curl_matrix(d_dyx_fns[process_present], vvel2,uvel2, dmap2, dyx, smap, rows,cols,vals,bb, rowoffset=n1)
-
+    dc_matrix(d_dyx_fns[True], vvel2,uvel2,
+        domain_data2,
+        dyx,smap, rows,cols,vals)
     M = scipy.sparse.coo_matrix((vals, (rows,cols)),
         shape=(n1*2, n1*2))
-
 
     # ------------ Construct vu vector based on smap
     vu_s = np.zeros(n1*2)
     vu_s[:n1] = vvel2[smap.sub2j, smap.sub2i]
     vu_s[n1:] = uvel2[smap.sub2j, smap.sub2i]
 
-    # ------------ Get result in subspace
-    if process_present:
-        divcurl_s = M * vu_s
-        div_s = divcurl_s[:n1]
-        curl_s = divcurl_s[n1:]
+    # ------------ Compute div/curl
 
-        #    print('div_s ',div_s)
+    # ... in subspace
+    divcurl_s = M * vu_s
+    div_s = divcurl_s[:n1]
+    curl_s = divcurl_s[n1:]
 
-        # ------------ Convert back to main space
-        div2 = np.zeros(vvel2.shape) + np.nan
-        div2[smap.sub2j, smap.sub2i] = div_s
-        curl2 = np.zeros(vvel2.shape) + np.nan
-        curl2[smap.sub2j, smap.sub2i] = curl_s
-
-    else:
-        pass
+    # ... convert back to main space
+    div2 = np.zeros(vvel2.shape) + np.nan
+    div2[smap.sub2j, smap.sub2i] = div_s
+    curl2 = np.zeros(vvel2.shape) + np.nan
+    curl2[smap.sub2j, smap.sub2i] = curl_s
 
 
     # ---------- Apply Poisson Fill to curl
@@ -486,37 +429,48 @@ def main():
     curl2_fv,_ = fill_missing_petsc.fill_missing(curl2_m)
     curl2_f = curl2_fv[:].reshape(curl2.shape)
 
-#    curl2_f = curl2
-#    curl2_f[np.isnan(curl2)] = 0
-
     # ---------- Apply Poisson Fill to div
     div2_m = np.ma.array(div2, mask=(np.isnan(div2)))
     div2_fv,_ = fill_missing_petsc.fill_missing(div2_m)
     div2_f = div2_fv[:].reshape(div2.shape)
 
 
-    # ---------- Redo smap
-    domain2 = remove_singletons(dmap2 != D_UNUSED, dmap2)
-    subj,subi = np.where(domain2)
+    # --------- Redo the domain (smap)
+    domain_used2 = (dmap2 != D_UNUSED)
+    remove_singletons(domain_used2, dmap2)
+    subj,subi = np.where(domain_used2)
     smap = SubMap(uvel2.shape, subj,subi)
     n1 = len(smap)
 
-    # ---------- Solve for v,u,div,curl simultaneously
-    M,bb = vudc_equations(vvel2, uvel2, dmap2, dyx, smap, div2_f, curl2_f)
-    vudc,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,bb)
-#        btol=1e-14)
-    print('LSQR ',istop,itn,r1norm,r2norm)
-#    vudc = scipy.sparse.linalg.spsolve(M,bb)
-#    ew,ev = scipy.sparse.linalg.eigs(M)
-#    print(ew)
-#    print('eigs ', list(np.abs(x) for x in ew))
-    n1 = smap.n1
-    print('n1 ',n1)
-    vv3 = smap.decode(vudc[smap.vbase:smap.vbase+n1])
-    uu3 = smap.decode(vudc[smap.ubase:smap.ubase+n1])
-    div3 = smap.decode(vudc[smap.dbase:smap.dbase+n1])
-    curl3 = smap.decode(vudc[smap.cbase:smap.cbase+n1])
+    # ------------ Create div matrix on all domain points
+    rows = list()
+    cols = list()
+    vals = list()
+    dyx = (5000, 5000)
+    dc_matrix(d_dyx_fns[True], vvel2,uvel2, domain_used2,
+        dyx,smap, rows,cols,vals)
+    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
+        shape=(n1*2, n1*2))
 
+    # ----------- Create dc vector in subspace
+    dc_s = np.zeros(n1*2)
+    dc_s[:n1] = div2[smap.sub2j, smap.sub2i]
+    dc_s[n1:] = curl2[smap.sub2j, smap.sub2i]
+
+    # ----------- Solve for vu_s
+#    print('***** Matrix condition number: {}'.format(np.linalg.cond(M)))
+#    vu_s,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,dc_s)
+#    vu_s = scipy.sparse.linalg.spsolve(M, dc_s)
+    lu = scipy.sparse.linalg.splu(M)
+
+    print('shape: ', M.shape, dc_s.shape)
+    vu_s = lu.solve(dc_s)
+    print('dc_s ', dc_s[:100])
+    print('vu_s ', vu_s[:100])
+
+    # ----------- Convert back to full space
+    vv3 = smap.decode(vu_s[:n1])
+    uu3 = smap.decode(vu_s[n1:])
 
     # ----------- Store it
     with netCDF4.Dataset('x.nc', 'w') as nc:
@@ -526,24 +480,24 @@ def main():
         ncv[:] = dmap2[:]
         ncv = nc.createVariable('amount', 'd', ('y','x'))
         ncv[:] = amount2[:]
-        ncv = nc.createVariable('domain', 'i', ('y','x'))
-        ncv[:] = domain2[:]
+#        ncv = nc.createVariable('domain', 'i', ('y','x'))
+#        ncv[:] = domain2[:]
         ncv = nc.createVariable('vvel', 'i', ('y','x'))
         ncv[:] = vvel2[:]
         ncv = nc.createVariable('uvel', 'i', ('y','x'))
         ncv[:] = uvel2[:]
-        if process_present:
+        if True:
             ncv = nc.createVariable('div', 'd', ('y','x'))
             ncv[:] = div2
             ncv = nc.createVariable('curl', 'd', ('y','x'))
             ncv[:] = curl2
+            ncv = nc.createVariable('div_f', 'd', ('y','x'))
+            ncv[:] = div2_f
             ncv = nc.createVariable('curl_f', 'd', ('y','x'))
             ncv[:] = curl2_f
 
         nc.createVariable('vv3', 'd', ('y','x'))[:] = vv3
         nc.createVariable('uu3', 'd', ('y','x'))[:] = uu3
-        nc.createVariable('div3', 'd', ('y','x'))[:] = div3
-        nc.createVariable('curl3', 'd', ('y','x'))[:] = curl3
 
 
 main()
