@@ -136,9 +136,9 @@ def curl_matrix(d_dyx, vvel2,uvel2, domain, dyx, smap, rows,cols,vals,
         Shape of the original finite difference grid
     """
     # curl = del x F = dF_y/dx - dF_x/dy
-    d_dyx[1](vvel2, domain, dyx[0], smap, rows,cols,vals,
+    d_dyx[1](vvel2, domain, dyx[1], smap, rows,cols,vals,
         factor=factor, rowoffset=rowoffset)
-    d_dyx[0](uvel2, domain, dyx[1], smap, rows,cols,vals,
+    d_dyx[0](uvel2, domain, dyx[0], smap, rows,cols,vals,
         factor=-factor, rowoffset=rowoffset, coloffset=len(smap))
 
 # -------------------------------------------------------
@@ -331,6 +331,42 @@ def vudc_equations(vv, uu, dmap,dyx, smap, div_f, curl_f):
     return M,bb
 
 # --------------------------------------------------------
+def get_div_curl(vvel2, uvel2, domain_data2, smap_data):
+
+    n1 = len(smap_data)
+
+    # ------------ Create div matrix on DATA points
+    rows = list()
+    cols = list()
+    vals = list()
+#    dyx = (5000, 5000)
+    dyx = (1.,1.)
+    dc_matrix(d_dyx_fns[True], vvel2,uvel2,
+        domain_data2,
+        dyx,smap_data, rows,cols,vals)
+    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
+        shape=(n1*2, n1*2))
+
+    # ------------ Construct vu vector based on smap_data
+    vu_s = np.zeros(n1*2)
+    vu_s[:n1] = vvel2[smap_data.sub2j, smap_data.sub2i]
+    vu_s[n1:] = uvel2[smap_data.sub2j, smap_data.sub2i]
+
+    # ------------ Compute div/curl
+
+    # ... in subspace
+    divcurl_s = M * vu_s
+    div_s = divcurl_s[:n1]
+    curl_s = divcurl_s[n1:]
+
+    # ... convert back to main space
+    div2 = np.zeros(vvel2.shape) + np.nan
+    div2[smap_data.sub2j, smap_data.sub2i] = div_s
+    curl2 = np.zeros(vvel2.shape) + np.nan
+    curl2[smap_data.sub2j, smap_data.sub2i] = curl_s
+
+    return div2,curl2
+
 def main():
     # --------- Read uvel and vvel
     t = 0    # Time
@@ -350,6 +386,9 @@ def main():
 
     vvel2 = cut_subset(vvel2)
     uvel2 = cut_subset(uvel2)
+
+#    vvel2[:] = 1
+#    uvel2[:] = 1
 
     # ------------ Read amount of ice (thickness)
     rhoice = 918.    # [kg m-3]: Convert thickness from [m] to [kg m-2]
@@ -380,8 +419,8 @@ def main():
     domain_data2 = (dmap2 == D_DATA)
     remove_singletons(domain_data2, dmap2)
     subj,subi = np.where(domain_data2)
-    smap = SubMap(uvel2.shape, subj,subi)
-    n1 = len(smap)
+    smap_data = SubMap(uvel2.shape, subj,subi)
+    n1 = len(smap_data)
 
     # ----------- Store it
     with netCDF4.Dataset('dmap.nc', 'w') as nc:
@@ -394,35 +433,7 @@ def main():
         ncv = nc.createVariable('domain_data', 'i', ('y','x'))
         ncv[:] = domain_data2[:]
 
-    # ------------ Create div matrix on DATA points
-    rows = list()
-    cols = list()
-    vals = list()
-    dyx = (5000, 5000)
-    dc_matrix(d_dyx_fns[True], vvel2,uvel2,
-        domain_data2,
-        dyx,smap, rows,cols,vals)
-    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
-        shape=(n1*2, n1*2))
-
-    # ------------ Construct vu vector based on smap
-    vu_s = np.zeros(n1*2)
-    vu_s[:n1] = vvel2[smap.sub2j, smap.sub2i]
-    vu_s[n1:] = uvel2[smap.sub2j, smap.sub2i]
-
-    # ------------ Compute div/curl
-
-    # ... in subspace
-    divcurl_s = M * vu_s
-    div_s = divcurl_s[:n1]
-    curl_s = divcurl_s[n1:]
-
-    # ... convert back to main space
-    div2 = np.zeros(vvel2.shape) + np.nan
-    div2[smap.sub2j, smap.sub2i] = div_s
-    curl2 = np.zeros(vvel2.shape) + np.nan
-    curl2[smap.sub2j, smap.sub2i] = curl_s
-
+    div2,curl2 = get_div_curl(vvel2, uvel2, domain_data2, smap_data)
 
     # ---------- Apply Poisson Fill to curl
     curl2_m = np.ma.array(curl2, mask=(np.isnan(curl2)))
@@ -435,42 +446,98 @@ def main():
     div2_f = div2_fv[:].reshape(div2.shape)
 
 
-    # --------- Redo the domain (smap)
+    div2_f[:] = 0
+    curl2_f[:] = 0
+
+    # --------- Redo the domain (smap_used)
     domain_used2 = (dmap2 != D_UNUSED)
     remove_singletons(domain_used2, dmap2)
     subj,subi = np.where(domain_used2)
-    smap = SubMap(uvel2.shape, subj,subi)
-    n1 = len(smap)
+    smap_used = SubMap(uvel2.shape, subj,subi)
+    n1 = len(smap_used)
 
     # ------------ Create div matrix on all domain points
     rows = list()
     cols = list()
     vals = list()
-    dyx = (5000, 5000)
+#    dyx = (5000, 5000)
+    dyx = (1.,1.)
     dc_matrix(d_dyx_fns[True], vvel2,uvel2, domain_used2,
-        dyx,smap, rows,cols,vals)
-    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
-        shape=(n1*2, n1*2))
+        dyx,smap_used, rows,cols,vals)
 
-    # ----------- Create dc vector in subspace
+    # ----------- Create dc vector in subspace as right hand side
     dc_s = np.zeros(n1*2)
-    dc_s[:n1] = div2[smap.sub2j, smap.sub2i]
-    dc_s[n1:] = curl2[smap.sub2j, smap.sub2i]
+    dc_s[:n1] = div2_f[smap_used.sub2j, smap_used.sub2i]
+    dc_s[n1:] = curl2_f[smap_used.sub2j, smap_used.sub2i]
+    bb = dc_s.tolist()
+    print(' *********** bb nan ', np.sum(np.isnan(bb)))
+#PROBLEM: This has NaNs!!!!!
+
+
+    # ------------ Add additional constraints for original data
+#    rows = list()
+#    cols = list()
+#    vals = list()
+#    bb = list()
+
+    for kd in range(0,len(smap_data)):
+        jj = smap_data.sub2j[kd]
+        ii = smap_data.sub2i[kd]
+
+#        print(jj,ii)
+#        if domain_data2[jj+1,ii] and domain_data2[jj-1,ii] and domain_data2[jj,ii+1] and domain_data2[jj,ii-1]:
+#            continue
+
+
+#        print('All data: ',jj,ii,domain_data2[jj+1,ii], domain_data2[jj-1,ii], domain_data2[jj,ii+1], domain_data2[jj,ii-1])
+
+#            continue
+
+        try:
+            ku = smap_used.ji2sub[jj,ii]
+            rows.append(len(bb))
+            cols.append(ku)
+            vals.append(.01*1.0)
+            bb.append(.01*vvel2[jj,ii])
+
+            rows.append(len(bb))
+            cols.append(len(smap_used) + ku)
+            vals.append(.01*1.0)
+            bb.append(.01*uvel2[jj,ii])
+
+        except KeyError:    # It's not in sub_used
+            pass
+
+    print('rows ', sum(1 if np.isnan(x) else 0 for x in rows))
+    print('cols ', sum(1 if np.isnan(x) else 0 for x in cols))
+    print('vals ', sum(1 if np.isnan(x) else 0 for x in vals))
+    print('bb ', sum(1 if np.isnan(x) else 0 for x in bb))
+
+    # ----------- Convert to a (rectangular) matrix
+    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
+        shape=(len(bb), n1*2)).tocsc()
+    print('nrows= ', len(bb))
+    rhs = np.array(bb)
 
     # ----------- Solve for vu_s
 #    print('***** Matrix condition number: {}'.format(np.linalg.cond(M)))
-#    vu_s,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,dc_s)
+    vu_s,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,rhs, damp=.0005)
+#    vu_s,istop,itn,normr,normar,norma,conda,normx = scipy.sparse.linalg.lsmr(M,rhs, damp=0.0005, maxiter=1000)
+#    print(vu_s)
 #    vu_s = scipy.sparse.linalg.spsolve(M, dc_s)
-    lu = scipy.sparse.linalg.splu(M)
+#    lu = scipy.sparse.linalg.splu(M)
 
-    print('shape: ', M.shape, dc_s.shape)
-    vu_s = lu.solve(dc_s)
-    print('dc_s ', dc_s[:100])
-    print('vu_s ', vu_s[:100])
+#    print('shape: ', M.shape, dc_s.shape)
+#    vu_s = lu.solve(dc_s)
+#    print('dc_s ', dc_s[:100])
+#    print('vu_s ', vu_s[:100])
 
     # ----------- Convert back to full space
-    vv3 = smap.decode(vu_s[:n1])
-    uu3 = smap.decode(vu_s[n1:])
+    vv3 = smap_used.decode(vu_s[:n1])
+    uu3 = smap_used.decode(vu_s[n1:])
+
+    div3,curl3 = get_div_curl(vv3, uu3, domain_used2, smap_used)
+
 
     # ----------- Store it
     with netCDF4.Dataset('x.nc', 'w') as nc:
@@ -498,6 +565,9 @@ def main():
 
         nc.createVariable('vv3', 'd', ('y','x'))[:] = vv3
         nc.createVariable('uu3', 'd', ('y','x'))[:] = uu3
+
+        nc.createVariable('div3', 'd', ('y','x'))[:] = div3
+        nc.createVariable('curl3', 'd', ('y','x'))[:] = curl3
 
 
 main()
