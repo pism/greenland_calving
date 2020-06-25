@@ -202,22 +202,19 @@ def main():
     with netCDF4.Dataset('outputs/velocity/TSX_W69.10N_2008_2020_pism.nc') as nc:
         nc_vvel = nc.variables['v_ssa_bc']
         nc_vvel.set_auto_mask(False)
-        vvel2 = nc_vvel[t,:].astype(np.float64)
-        vvel2[vvel2 == nc_vvel._FillValue] = np.nan
+        vsvel2 = nc_vvel[t,:].astype(np.float64)
+        vsvel2[vsvel2 == nc_vvel._FillValue] = np.nan
 
         nc_uvel = nc.variables['u_ssa_bc']
         nc_uvel.set_auto_mask(False)    # Don't use masked arrays
-        uvel2 = nc_uvel[t,:].astype(np.float64)
-        uvel2[uvel2 == nc_uvel._FillValue] = np.nan
+        usvel2 = nc_uvel[t,:].astype(np.float64)
+        usvel2[usvel2 == nc_uvel._FillValue] = np.nan
 
         print('Fill Value {}'.format(nc_uvel._FillValue))
 
 
-    vvel2 = cut_subset(vvel2)
-    uvel2 = cut_subset(uvel2)
-
-#    vvel2[:] = 1
-#    uvel2[:] = 1
+    vsvel2 = cut_subset(vsvel2)
+    usvel2 = cut_subset(usvel2)
 
     # ------------ Read amount of ice (thickness)
     rhoice = 918.    # [kg m-3]: Convert thickness from [m] to [kg m-2]
@@ -225,11 +222,12 @@ def main():
         amount2 = nc.variables['thickness'][:].astype(np.float64) * rhoice
 
     amount2 = cut_subset(amount2)
+    # Filter amount, it's from a lower resolution
+    amount2 = scipy.ndimage.gaussian_filter(amount2, sigma=2.0)
 
     # ------------ Convert surface velocities to volumetric velocities
-    vvel2[:,:] *= amount2
-    uvel2[:,:] *= amount2
-
+    vvel2 = vsvel2 * amount2
+    uvel2 = usvel2 * amount2
 
     # ------------ Set up the domain map (classify gridcells)
     dmap2 = np.zeros(vvel2.shape, dtype='i') + D_UNUSED
@@ -240,7 +238,6 @@ def main():
         ))] = D_MISSING
 
     # ------------ Select subspace of gridcells on which to operate
-
     # Select cells with data
     # *** TODO: This is wonky
     divable_data2 = get_divable(dmap2==D_DATA)
@@ -273,7 +270,7 @@ def main():
     div2_f = div2_fv[:].reshape(div2.shape)
 
 
-#    div2_f[:] = 0
+    div2_f[:] = 0
 #    curl2_f[:] = 0
 
     # --------- Redo the domain (smap_used)
@@ -371,15 +368,20 @@ def main():
     vv3 = np.reshape(vu[:n1], dmap2.shape)
     uu3 = np.reshape(vu[n1:], dmap2.shape)
 
-    # Smooth: because our localized low-order FD approximation introduces
-    # stippling, especially at boundaries
-    vv3 = scipy.ndimage.gaussian_filter(vv3, sigma=1.0)
-    uu3 = scipy.ndimage.gaussian_filter(uu3, sigma=1.0)
-
-
-
     div3,curl3 = get_div_curl(vv3, uu3, domain_used2)
 
+    # Convert back to surface velocity
+    vvs3 = vv3 / amount2
+    vvs3[amount2==0] = np.nan
+    uus3 = uu3 / amount2
+    uus3[amount2==0] = np.nan
+
+
+
+    # Smooth: because our localized low-order FD approximation introduces
+    # stippling, especially at boundaries
+    vvs3 = scipy.ndimage.gaussian_filter(vvs3, sigma=1.0)
+    uus3 = scipy.ndimage.gaussian_filter(uus3, sigma=1.0)
 
     # ----------- Store it
     with netCDF4.Dataset('x.nc', 'w') as nc:
@@ -391,10 +393,10 @@ def main():
         ncv[:] = amount2[:]
 #        ncv = nc.createVariable('domain', 'i', ('y','x'))
 #        ncv[:] = domain2[:]
-        ncv = nc.createVariable('vvel', 'd', ('y','x'))
-        ncv[:] = vvel2[:]
-        ncv = nc.createVariable('uvel', 'd', ('y','x'))
-        ncv[:] = uvel2[:]
+        nc.createVariable('vsvel', 'd', ('y','x'))[:] = vsvel2
+        nc.createVariable('usvel', 'd', ('y','x'))[:] = usvel2
+        nc.createVariable('vvel', 'd', ('y','x'))[:] = vvel2
+        nc.createVariable('uvel', 'd', ('y','x'))[:] = uvel2
         if True:
             ncv = nc.createVariable('div', 'd', ('y','x'))
             ncv[:] = div2
@@ -410,11 +412,15 @@ def main():
         nc.createVariable('vv3', 'd', ('y','x'))[:] = vv3
         nc.createVariable('uu3', 'd', ('y','x'))[:] = uu3
 
+        nc.createVariable('vvs3', 'd', ('y','x'))[:] = vvs3
+        nc.createVariable('uus3', 'd', ('y','x'))[:] = uus3
+
         nc.createVariable('div3', 'd', ('y','x'))[:] = div3
         nc.createVariable('curl3', 'd', ('y','x'))[:] = curl3
 
-        nc.createVariable('vv3_diff', 'd', ('y','x'))[:] = vv3-vvel2
-        nc.createVariable('uu3_diff', 'd', ('y','x'))[:] = uu3-uvel2
+        nc.createVariable('vv3_diff', 'd', ('y','x'))[:] = vvs3-vsvel2
+        nc.createVariable('uu3_diff', 'd', ('y','x'))[:] = uus3-usvel2
+
 
 
 
