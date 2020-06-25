@@ -5,6 +5,7 @@ import netCDF4
 import sys
 from pism.util import fill_missing_petsc
 import uafgi.indexing
+import scipy.ndimage
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -201,12 +202,12 @@ def main():
     with netCDF4.Dataset('outputs/velocity/TSX_W69.10N_2008_2020_pism.nc') as nc:
         nc_vvel = nc.variables['v_ssa_bc']
         nc_vvel.set_auto_mask(False)
-        vvel2 = nc_vvel[t,:]
+        vvel2 = nc_vvel[t,:].astype(np.float64)
         vvel2[vvel2 == nc_vvel._FillValue] = np.nan
 
         nc_uvel = nc.variables['u_ssa_bc']
         nc_uvel.set_auto_mask(False)    # Don't use masked arrays
-        uvel2 = nc_uvel[t,:]
+        uvel2 = nc_uvel[t,:].astype(np.float64)
         uvel2[uvel2 == nc_uvel._FillValue] = np.nan
 
         print('Fill Value {}'.format(nc_uvel._FillValue))
@@ -221,9 +222,13 @@ def main():
     # ------------ Read amount of ice (thickness)
     rhoice = 918.    # [kg m-3]: Convert thickness from [m] to [kg m-2]
     with netCDF4.Dataset('outputs/bedmachine/W69.10N-thickness.nc') as nc:
-        amount2 = nc.variables['thickness'][:] * rhoice
+        amount2 = nc.variables['thickness'][:].astype(np.float64) * rhoice
 
     amount2 = cut_subset(amount2)
+
+    # ------------ Convert surface velocities to volumetric velocities
+    vvel2[:,:] *= amount2
+    uvel2[:,:] *= amount2
 
 
     # ------------ Set up the domain map (classify gridcells)
@@ -252,6 +257,8 @@ def main():
         ncv[:] = amount2[:]
         ncv = nc.createVariable('divable_data', 'i', ('y','x'))
         ncv[:] = divable_data2[:]
+        nc.createVariable('vvel', 'd', ('y','x'))[:] = vvel2
+        nc.createVariable('uvel', 'd', ('y','x'))[:] = uvel2
 
     div2,curl2 = get_div_curl(vvel2, uvel2, divable_data2)
 
@@ -271,6 +278,11 @@ def main():
 
     # --------- Redo the domain (smap_used)
     domain_used2 = get_divable(dmap2 != D_UNUSED)
+    domain_used2 = np.ones(dmap2.shape, dtype=bool)
+    domain_used2[0,:] = False
+    domain_used2[-1,:] = False
+    domain_used2[:,0] = False
+    domain_used2[:,-1] = False
 
     # ------------ Create div matrix on all domain points
     rows = list()
@@ -295,6 +307,9 @@ def main():
 #    vals = list()
 #    bb = list()
     if True:
+        # How much to fit original U/V data
+        # Larger --> Avoids changing original data, but more stippling
+        prior_weight = 0.8
         for jj in range(0, divable_data2.shape[0]):
             for ii in range(0, divable_data2.shape[1]):
 
@@ -304,13 +319,13 @@ def main():
                     try:
                         rows.append(len(bb))
                         cols.append(ku)
-                        vals.append(.01*1.0)
-                        bb.append(.01*vvel2[jj,ii])
+                        vals.append(prior_weight*1.0)
+                        bb.append(prior_weight*vvel2[jj,ii])
 
                         rows.append(len(bb))
                         cols.append(n1 + ku)
-                        vals.append(.01*1.0)
-                        bb.append(.01*uvel2[jj,ii])
+                        vals.append(prior_weight*1.0)
+                        bb.append(prior_weight*uvel2[jj,ii])
 
                     except KeyError:    # It's not in sub_used
                         pass
@@ -346,7 +361,7 @@ def main():
 
     # ----------- Solve for vu_s
 #    print('***** Matrix condition number: {}'.format(np.linalg.cond(M)))
-    vu_s,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,rhs, damp=.0005, iter_lim=3000)
+    vu_s,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,rhs, damp=.0005)#, iter_lim=3000)
 
     # ----------- Convert back to full space
 #    vu = np.zeros(n1*2) + np.nan
@@ -355,6 +370,13 @@ def main():
 
     vv3 = np.reshape(vu[:n1], dmap2.shape)
     uu3 = np.reshape(vu[n1:], dmap2.shape)
+
+    # Smooth: because our localized low-order FD approximation introduces
+    # stippling, especially at boundaries
+    vv3 = scipy.ndimage.gaussian_filter(vv3, sigma=1.0)
+    uu3 = scipy.ndimage.gaussian_filter(uu3, sigma=1.0)
+
+
 
     div3,curl3 = get_div_curl(vv3, uu3, domain_used2)
 
@@ -369,9 +391,9 @@ def main():
         ncv[:] = amount2[:]
 #        ncv = nc.createVariable('domain', 'i', ('y','x'))
 #        ncv[:] = domain2[:]
-        ncv = nc.createVariable('vvel', 'i', ('y','x'))
+        ncv = nc.createVariable('vvel', 'd', ('y','x'))
         ncv[:] = vvel2[:]
-        ncv = nc.createVariable('uvel', 'i', ('y','x'))
+        ncv = nc.createVariable('uvel', 'd', ('y','x'))
         ncv[:] = uvel2[:]
         if True:
             ncv = nc.createVariable('div', 'd', ('y','x'))
@@ -383,11 +405,18 @@ def main():
             ncv = nc.createVariable('curl_f', 'd', ('y','x'))
             ncv[:] = curl2_f
 
+
+
         nc.createVariable('vv3', 'd', ('y','x'))[:] = vv3
         nc.createVariable('uu3', 'd', ('y','x'))[:] = uu3
 
         nc.createVariable('div3', 'd', ('y','x'))[:] = div3
         nc.createVariable('curl3', 'd', ('y','x'))[:] = curl3
+
+        nc.createVariable('vv3_diff', 'd', ('y','x'))[:] = vv3-vvel2
+        nc.createVariable('uu3_diff', 'd', ('y','x'))[:] = uu3-uvel2
+
+
 
 
 main()
