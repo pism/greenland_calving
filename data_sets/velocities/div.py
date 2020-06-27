@@ -261,9 +261,196 @@ def get_div_curl(vvel2, uvel2, divable_data2, dyx=(1.,1.)):
     curl2[np.logical_not(divable_data2)] = np.nan
 
     return div2,curl2
+# ----------------------------------------------------------
+def fill_flow(vvel2, uvel2, dmap2, clear_divergence=False, prior_weight=0.8):
+    """
+    vvel, uvel: ndarray(j,i)
+        Volumetric flow fields (should have divergence=0)
+    dmap2: ndarray(j,i)
+        Per-gridcell map of the domain.
+        D_UNUSED: Gridcell is not part of the domain
+        D_MISSING: Gridcell is part of the domain but data are missing; should be filled in
+        D_DATA: Data present
+    clear_divergence:
+        if True, zero out the divergence when filling.
+        Otherwise, just Poisson-fill existing (non-zero) divergence.
+    prior_weight: 0-1
+        The amount to weight rows that pin values to the origianl data.
+
+    Returns: vvel_filled, uvel_filled, diagnostics
+        Filled versions of vvel2, uvel2
+    """
+
+    diagnostics = dict()
+
+    # ------------ Select subspace of gridcells on which to operate
+    # Select cells with data
+    divable_data2 = get_divable(dmap2==D_DATA)
+    indexing_data = get_indexing(divable_data2)
+
+    # n1 = number of gridcells, even unused cells.
+    # LSQR works OK with unused cells in its midst.
+    n1 = dmap2.shape[0] * dmap2.shape[1]
+
+    # -------------- Compute divergence and curl
+    div2,curl2 = get_div_curl(vvel2, uvel2, divable_data2)
+    diagnostics['div'] = div2
+    diagnostics['curl'] = curl2
+
+    # ---------- Apply Poisson Fill to div
+    if clear_divergence:
+        div2_f = np.zeros(dmap2.shape)
+    else:
+        div2_m = np.ma.array(div2, mask=(np.isnan(div2)))
+        div2_fv,_ = fill_missing_petsc.fill_missing(div2_m)
+        div2_f = div2_fv[:].reshape(div2.shape)
+        div2_f[:] = 0
+    diagnostics['div_filled'] = div2_f
+
+    # ---------- Apply Poisson Fill to curl
+    curl2_m = np.ma.array(curl2, mask=(np.isnan(curl2)))
+    curl2_fv,_ = fill_missing_petsc.fill_missing(curl2_m)
+    curl2_f = curl2_fv[:].reshape(curl2.shape)
+    diagnostics['curl_filled'] = curl2_f
+
+
+    # ================================== Set up LSQR Problem
+    rows = list()
+    cols = list()
+    vals = list()
+
+    # --------- Setup domain to compute filled-in data EVERYWHERE
+    # This keeps the edges of the domain as far as possible from places where
+    # "the action" happens.  Edge effects can cause stippling problems.
+    divable_used2 = np.ones(dmap2.shape, dtype=bool)
+    # Make a bezel around the edge
+    divable_used2[0,:] = False
+    divable_used2[-1,:] = False
+    divable_used2[:,0] = False
+    divable_used2[:,-1] = False
+
+    # ------------ Create div+cov matrix on all domain points.
+    # This ensures our solution has the correct divergence and curl
+    # This will include some empty rows and columns in the LSQR
+    # matrix.  That is not a problem for LSQR.
+    dyx = (1.,1.)
+    dc_matrix((d_dy_present, d_dx_present), divable_used2,
+        dyx, rows,cols,vals)
+
+    # ----------- Create dc vector in subspace as right hand side
+    # ...based on our filled divergence and curl from above
+    dc_s = np.zeros(n1*2)
+    dc_s[:n1] = np.reshape(div2_f, -1)
+    dc_s[n1:] = np.reshape(curl2_f, -1)
+    bb = dc_s.tolist()    # bb = right-hand-side of LSQR problem
+
+    # ------------ Add additional constraints for original data
+    # This ensures our answer (almost) equals the original, where we
+    # had data.
+    # Larger --> Avoids changing original data, but more stippling
+    for jj in range(0, divable_data2.shape[0]):
+        for ii in range(0, divable_data2.shape[1]):
+
+            if dmap2[jj,ii] == D_DATA:
+
+                ku = indexing_data.tuple_to_index((jj,ii))
+                try:
+                    rows.append(len(bb))
+                    cols.append(ku)
+                    vals.append(prior_weight*1.0)
+                    bb.append(prior_weight*vvel2[jj,ii])
+
+                    rows.append(len(bb))
+                    cols.append(n1 + ku)
+                    vals.append(prior_weight*1.0)
+                    bb.append(prior_weight*uvel2[jj,ii])
+
+                except KeyError:    # It's not in sub_used
+                    pass
+
+    # ================= Solve the LSQR Problem
+
+    # ---------- Convert to SciPy Sparse Matrix Format
+    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
+        shape=(len(bb),n1*2)).tocsc()
+    rhs = np.array(bb)
+
+    # ----------- Solve for vu
+    vu,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,rhs, damp=.0005)#, iter_lim=3000)
+
+    # ----------- Convert back to 2D
+    vv3 = np.reshape(vu[:n1], dmap2.shape)
+    uu3 = np.reshape(vu[n1:], dmap2.shape)
+
+
+    return vv3, uu3, diagnostics
+
+def fill_surface_flow(vsvel2, usvel2, amount2, dmap2, clear_divergence=False, prior_weight=0.8):
+    """
+    vsvel2, usvel2: np.array(j,i)
+        Surface velocities
+    amount2: np.array(j,i)
+        Ice depth; multiply surface velocity by this to get volumetric velocity
+    amount2:
+        Multiply surface velocity by this to get volumetric velocity
+        Generally, could be depth of ice.
+        (whose divergence should be 0)
+    dmap2: ndarray(j,i)
+        Per-gridcell map of the domain.
+        D_UNUSED: Gridcell is not part of the domain
+        D_MISSING: Gridcell is part of the domain but data are missing; should be filled in
+        D_DATA: Data present
+    clear_divergence:
+        if True, zero out the divergence when filling.
+        Otherwise, just Poisson-fill existing (non-zero) divergence.
+    prior_weight: 0-1
+        The amount to weight rows that pin values to the origianl data.
+
+    Returns: vvs3, uus3, (vvel2, uvel2, vvel_filled, uvel_filled)
+        vvs3, uus3:
+            Final filled and smothed surface velocities
+
+        Intermediate values...
+        vvel2,uvel2:
+            Original non-filled volumetric velocities
+        vvel_filled, uvel_filled:
+            Filled volumetric velocities.
+            Should have divergence=0
+    """
+
+    diagnostics = dict()
+
+    # Get volumetric velocity from surface velocity
+    vvel2 = vsvel2 * amount2
+    uvel2 = usvel2 * amount2
+    diagnostics['vvel'] = vvel2
+    diagnostics['uvel'] = uvel2
+
+    vvel_filled,uvel_filled,d2 = fill_flow(vvel2, uvel2, dmap2, clear_divergence=clear_divergence, prior_weight=prior_weight)
+    diagnostics.update(d2.items())
+    diagnostics['vvel_filled'] = vvel_filled
+    diagnostics['uvel_filled'] = uvel_filled
+
+    # Convert back to surface velocity
+    vvs3 = vvel_filled / amount2
+    vvs3[amount2==0] = np.nan
+    uus3 = uvel_filled / amount2
+    uus3[amount2==0] = np.nan
+
+    # Smooth: because our localized low-order FD approximation introduces
+    # stippling, especially at boundaries
+    # We need to smooth just over a single gridcell
+    vvs3 = scipy.ndimage.gaussian_filter(vvs3, sigma=1.0)
+    uus3 = scipy.ndimage.gaussian_filter(uus3, sigma=1.0)
+
+    return vvs3, uus3, diagnostics
+
+
 
 # --------------------------------------------------------
 def main():
+
+    # ========================= Read Data from Input Files
     # --------- Read uvel and vvel
     t = 0    # Time
     with netCDF4.Dataset('outputs/velocity/TSX_W69.10N_2008_2020_pism.nc') as nc:
@@ -292,189 +479,37 @@ def main():
     # Filter amount, it's from a lower resolution
     amount2 = scipy.ndimage.gaussian_filter(amount2, sigma=2.0)
 
-    # ------------ Convert surface velocities to volumetric velocities
-    vvel2 = vsvel2 * amount2
-    uvel2 = usvel2 * amount2
 
     # ------------ Set up the domain map (classify gridcells)
-    dmap2 = np.zeros(vvel2.shape, dtype='i') + D_UNUSED
+    dmap2 = np.zeros(vsvel2.shape, dtype='i') + D_UNUSED
     dmap2[amount2 > 0] = D_DATA
     dmap2[np.where(np.logical_and(
         amount2 > 0,
-        np.isnan(vvel2)
+        np.isnan(vsvel2)
         ))] = D_MISSING
 
-    # ------------ Select subspace of gridcells on which to operate
-    # Select cells with data
-    # *** TODO: This is wonky
-    divable_data2 = get_divable(dmap2==D_DATA)
-    indexing_data = get_indexing(divable_data2)
-    n1 = dmap2.shape[0] * dmap2.shape[1]
 
     # ----------- Store it
-    with netCDF4.Dataset('dmap.nc', 'w') as nc:
-        nc.createDimension('y', vvel2.shape[0])
-        nc.createDimension('x', vvel2.shape[1])
-        ncv = nc.createVariable('dmap', 'i', ('y','x'))
-        ncv[:] = dmap2[:]
-        ncv = nc.createVariable('amount', 'd', ('y','x'))
-        ncv[:] = amount2[:]
-        ncv = nc.createVariable('divable_data', 'i', ('y','x'))
-        ncv[:] = divable_data2[:]
-        nc.createVariable('vvel', 'd', ('y','x'))[:] = vvel2
-        nc.createVariable('uvel', 'd', ('y','x'))[:] = uvel2
+    vv3,uu3,diagnostics = fill_surface_flow(vsvel2, usvel2, amount2, dmap2,
+        clear_divergence=True, prior_weight=0.8)
 
-    div2,curl2 = get_div_curl(vvel2, uvel2, divable_data2)
-
-    # ---------- Apply Poisson Fill to curl
-    curl2_m = np.ma.array(curl2, mask=(np.isnan(curl2)))
-    curl2_fv,_ = fill_missing_petsc.fill_missing(curl2_m)
-    curl2_f = curl2_fv[:].reshape(curl2.shape)
-
-    # ---------- Apply Poisson Fill to div
-    div2_m = np.ma.array(div2, mask=(np.isnan(div2)))
-    div2_fv,_ = fill_missing_petsc.fill_missing(div2_m)
-    div2_f = div2_fv[:].reshape(div2.shape)
-
-
-    div2_f[:] = 0
-#    curl2_f[:] = 0
-
-    # --------- Redo the domain (smap_used)
-    domain_used2 = get_divable(dmap2 != D_UNUSED)
-    domain_used2 = np.ones(dmap2.shape, dtype=bool)
-    domain_used2[0,:] = False
-    domain_used2[-1,:] = False
-    domain_used2[:,0] = False
-    domain_used2[:,-1] = False
-
-    # ------------ Create div matrix on all domain points
-    rows = list()
-    cols = list()
-    vals = list()
-#    dyx = (5000, 5000)
-    dyx = (1.,1.)
-    dc_matrix((d_dy_present, d_dx_present), domain_used2,
-        dyx, rows,cols,vals)
-
-    # ----------- Create dc vector in subspace as right hand side
-    dc_s = np.zeros(n1*2)
-    dc_s[:n1] = np.reshape(div2_f, -1)
-    dc_s[n1:] = np.reshape(curl2_f, -1)
-    bb = dc_s.tolist()
-    print(' *********** bb nan ', np.sum(np.isnan(bb)))
-
-
-    # ------------ Add additional constraints for original data
-#    rows = list()
-#    cols = list()
-#    vals = list()
-#    bb = list()
-    if True:
-        # How much to fit original U/V data
-        # Larger --> Avoids changing original data, but more stippling
-        prior_weight = 0.8
-        for jj in range(0, divable_data2.shape[0]):
-            for ii in range(0, divable_data2.shape[1]):
-
-                if dmap2[jj,ii] == D_DATA:
-
-                    ku = indexing_data.tuple_to_index((jj,ii))
-                    try:
-                        rows.append(len(bb))
-                        cols.append(ku)
-                        vals.append(prior_weight*1.0)
-                        bb.append(prior_weight*vvel2[jj,ii])
-
-                        rows.append(len(bb))
-                        cols.append(n1 + ku)
-                        vals.append(prior_weight*1.0)
-                        bb.append(prior_weight*uvel2[jj,ii])
-
-                    except KeyError:    # It's not in sub_used
-                        pass
-
-    print('rows ', sum(1 if np.isnan(x) else 0 for x in rows))
-    print('cols ', sum(1 if np.isnan(x) else 0 for x in cols))
-    print('vals ', sum(1 if np.isnan(x) else 0 for x in vals))
-    print('bb ', sum(1 if np.isnan(x) else 0 for x in bb))
-
-    # ----------- Remove unused rows
-
-    print(' *********** bb nan2 ', np.sum(np.isnan(bb)))
-    print('M0 shape ',(len(bb), n1*2))
-    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
-        shape=(len(bb),n1*2)).tocsc()
-    rhs = np.array(bb)
-    print('M len ', M.shape, len(rhs))
-    print(' *********** rhs nan2 ', np.sum(np.isnan(rhs)))
-
-    # ----------- Solve for vu_s
-#    print('***** Matrix condition number: {}'.format(np.linalg.cond(M)))
-    vu_s,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,rhs, damp=.0005)#, iter_lim=3000)
-
-    # ----------- Convert back to full space
-#    vu = np.zeros(n1*2) + np.nan
-#    vu[cols_oldvnew] = vu_s
-    vu = vu_s
-
-    vv3 = np.reshape(vu[:n1], dmap2.shape)
-    uu3 = np.reshape(vu[n1:], dmap2.shape)
-
-    div3,curl3 = get_div_curl(vv3, uu3, domain_used2)
-
-    # Convert back to surface velocity
-    vvs3 = vv3 / amount2
-    vvs3[amount2==0] = np.nan
-    uus3 = uu3 / amount2
-    uus3[amount2==0] = np.nan
-
-
-
-    # Smooth: because our localized low-order FD approximation introduces
-    # stippling, especially at boundaries
-    vvs3 = scipy.ndimage.gaussian_filter(vvs3, sigma=1.0)
-    uus3 = scipy.ndimage.gaussian_filter(uus3, sigma=1.0)
-
-    # ----------- Store it
     with netCDF4.Dataset('x.nc', 'w') as nc:
-        nc.createDimension('y', vvel2.shape[0])
-        nc.createDimension('x', vvel2.shape[1])
-        ncv = nc.createVariable('dmap', 'i', ('y','x'))
-        ncv[:] = dmap2[:]
-        ncv = nc.createVariable('amount', 'd', ('y','x'))
-        ncv[:] = amount2[:]
-#        ncv = nc.createVariable('domain', 'i', ('y','x'))
-#        ncv[:] = domain2[:]
+
+        # ----------- Store it
+        nc.createDimension('y', vsvel2.shape[0])
+        nc.createDimension('x', vsvel2.shape[1])
         nc.createVariable('vsvel', 'd', ('y','x'))[:] = vsvel2
         nc.createVariable('usvel', 'd', ('y','x'))[:] = usvel2
-        nc.createVariable('vvel', 'd', ('y','x'))[:] = vvel2
-        nc.createVariable('uvel', 'd', ('y','x'))[:] = uvel2
-        if True:
-            ncv = nc.createVariable('div', 'd', ('y','x'))
-            ncv[:] = div2
-            ncv = nc.createVariable('curl', 'd', ('y','x'))
-            ncv[:] = curl2
-            ncv = nc.createVariable('div_f', 'd', ('y','x'))
-            ncv[:] = div2_f
-            ncv = nc.createVariable('curl_f', 'd', ('y','x'))
-            ncv[:] = curl2_f
+        nc.createVariable('amount', 'd', ('y','x'))[:] = amount2
 
+        nc.createVariable('vsvel_filled', 'd', ('y','x'))[:] = vv3
+        nc.createVariable('usvel_filled', 'd', ('y','x'))[:] = uu3
 
+        nc.createVariable('vsvel_diff', 'd', ('y','x'))[:] = vv3-vsvel2
+        nc.createVariable('usvel_diff', 'd', ('y','x'))[:] = uu3-usvel2
 
-        nc.createVariable('vv3', 'd', ('y','x'))[:] = vv3
-        nc.createVariable('uu3', 'd', ('y','x'))[:] = uu3
-
-        nc.createVariable('vvs3', 'd', ('y','x'))[:] = vvs3
-        nc.createVariable('uus3', 'd', ('y','x'))[:] = uus3
-
-        nc.createVariable('div3', 'd', ('y','x'))[:] = div3
-        nc.createVariable('curl3', 'd', ('y','x'))[:] = curl3
-
-        nc.createVariable('vv3_diff', 'd', ('y','x'))[:] = vvs3-vsvel2
-        nc.createVariable('uu3_diff', 'd', ('y','x'))[:] = uus3-usvel2
-
-
+        for vname,val in diagnostics.items():
+            nc.createVariable(vname, 'd', ('y','x'))[:] = val
 
 
 
