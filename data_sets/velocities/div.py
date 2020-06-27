@@ -7,17 +7,26 @@ from pism.util import fill_missing_petsc
 import uafgi.indexing
 import scipy.ndimage
 
-np.set_printoptions(threshold=sys.maxsize)
+#np.set_printoptions(threshold=sys.maxsize)
 
-D_UNUSED = 0    # Not part of the FD Domain
+# Enumerated values describing each gridcell
+D_UNUSED = 0        # Not part of the domain
 D_MISSING = 1       # Data are missing here
-D_DATA = 2      # There is data here
+D_DATA = 2          # There are data here
 
+# Indices and weights for first-order ceter fine difference.
 center_diff = ((-1,1), (-.5,.5))
 
 # -------------------------------------------------------
 def get_indexing(ndarr):
-    """Assumes ndarr is fully packed, row-major: j,i indexing"""
+    """Produces a uafgi.indexing.Indexing object describing
+    how a standard row-major 2D array Numpy ndarray is indexed.
+
+    ndarr:
+        Numpy array for which to produce an Indexing object.
+    Returns:
+        The Indexing object for ndarr
+    """
     base = (0,0)
     extent = ndarr.shape
     indices = (0,1)    # List highest-stride index first
@@ -25,13 +34,37 @@ def get_indexing(ndarr):
 
 # -------------------------------------------------------
 def d_dy_present(divable,dy,  indexing,  rows,cols,vals, factor=1.0, rowoffset=0, coloffset=0):
-    """Produces a matrix for the del operator
 
-       rows,cols,vals:
-            Matrix M
-    divable:
-        Map of which cells are avaialble to calculate 2D divergence
+    """Adds the discretized finite difference d/dy operator,
+    (derivative in the y direction, or 0th index), to a sparse matrix.
+    Each (j,i) index in the 2D array for which a derivative is being
+    computed is converted to a k index in the 1D vector on which the
+    matrix operates.
+
+    The (row,col) of each item is based on the positions of the
+    gridcells involved in each part of the d/dy operator.
+
+    divable: ndarray(bool)
+        Map of which cells are avaialble to calculate 2D derivatives;
+        i.e. gridcells that are fully surrounded by gridcells with
+        data (D_DATA), even if the gridcell itself is undefined.
         See get_divable()
+
+    indexing: uafgi.indexing.Indexing
+        Indexing object for 2D arrays 
+    rows,cols,vals:
+        Lists to which to append (row,col,val) for each item in
+        the sparse matrix being created.
+    factor:
+        Multiple values by this
+    rowoffset:
+        Add this to every row index.
+        Used to put a sub-matrix computing divergence, and one
+        computing curl, into the same matrix.
+    coloffset:
+        Add this to every column index.
+        Used to create a matrix that can take a concatenated vecotr of
+        [v,u] as its input.
     """
     #indexing = get_indexing(divable)
     bydy = 1. / dy
@@ -52,31 +85,56 @@ def d_dy_present(divable,dy,  indexing,  rows,cols,vals, factor=1.0, rowoffset=0
 
 def d_dx_present(divable,dx, indexing,  rows,cols,vals,
     factor=1.0, rowoffset=0, coloffset=0):
+    """Adds the discretized finite difference d/dy operator,
+    (derivative in the y direction, or 0th index), to a sparse matrix.
+    See d_dy_present for arguments.
+
+    d/dx is computed by computing d/dy on the transpose of all the
+    (2D) array inputs.  The Indexing object must also be
+    "tranposed"...
+    """
 
     d_dy_present(np.transpose(divable),dx, indexing.transpose(),
         rows,cols,vals,
         factor=factor, rowoffset=rowoffset, coloffset=coloffset)
 # ----------------------------------------------------------------
-# d_dy_fns(present)
-d_dyx_fns = {
-    True : (d_dy_present, d_dx_present),
-}
-
-# ----------------------------------------------------------------
 def div_matrix(d_dyx, divable, dyx, rows,cols,vals,
     factor=1.0, rowoffset=0):
 
-    """Generates a matrix to compute divergence of a vector field.
-    (v and u are stacked)
+    """Adds the discretized finite difference divergence operator to a
+    sparse matrix.  Based on d/dy and d/dx functions.
 
-    d_dyx: [2]
-        Function used to generate the derivative matrix for (d/dy, d/dx)
+    Matrix assumes concated vector of (v,u) where v is the velocity in
+    the y direciton, and u in the x direction.
 
-    vu1:
-        1D matrix of U component of velocity, followed by V component
-    shape:
-        Shape of the original finite difference grid
+    Each (j,i) index in the 2D array for which a derivative is being
+    computed is converted to a k index in the 1D vector on which the
+    matrix operates.
+
+    The (row,col) of each item is based on the positions of the
+    gridcells involved in each part of the d/dy operator.
+
+    d_dyx:
+        Must be (d_dy_present, d_dx_present)
+    divable: ndarray(bool)
+        Map of which cells are avaialble to calculate 2D derivatives;
+        i.e. gridcells that are fully surrounded by gridcells with
+        data (D_DATA), even if the gridcell itself is undefined.
+        See get_divable()
+    dyx: (dy, dx)
+        Grid spacing in each direction
+    rows,cols,vals:
+        Lists to which to append (row,col,val) for each item in
+        the sparse matrix being created.
+    factor:
+        Multiple values by this
+    rowoffset:
+        Add this to every row index.
+        Used to put a sub-matrix computing divergence, and one
+        computing curl, into the same matrix.
+
     """
+
     indexing = get_indexing(divable)
     n1 = divable.shape[0] * divable.shape[1]
     d_dyx[0](divable,dyx[0], indexing, rows,cols,vals,
@@ -87,14 +145,11 @@ def div_matrix(d_dyx, divable, dyx, rows,cols,vals,
 
 def curl_matrix(d_dyx, divable, dyx, rows,cols,vals,
     factor=1.0, rowoffset=0):
-    """Generates a matrix to compute divergence of a vector field.
-    (v and u are stacked)
+    """Adds the discretized finite difference divergence operator to a
+    sparse matrix.  Based on d/dy and d/dx functions.
 
-    vu1:
-        1D matrix of U component of velocity, followed by V component
-    shape:
-        Shape of the original finite difference grid
-    """
+    Arguments:
+        Same as div_matrix()"""
 
     indexing = get_indexing(divable)
 
@@ -106,17 +161,41 @@ def curl_matrix(d_dyx, divable, dyx, rows,cols,vals,
         factor=-factor, rowoffset=rowoffset, coloffset=n1)
 
 # -------------------------------------------------------
-def dc_matrix(d_dyx, divable2, dyx, rows,cols,vals,
+def dc_matrix(d_dyx, divable, dyx, rows,cols,vals,
     factor=1.0):
 
-    n1 = divable2.shape[0] * divable2.shape[1]
+    """Accumulates a matrix that converts the concatenated vector:
+        [v, u]
+    to the concatenated vector:
+        [div, curl]
 
-    div_matrix(d_dyx_fns[True], divable2, dyx, rows,cols,vals)
-    curl_matrix(d_dyx_fns[True], divable2, dyx, rows,cols,vals, rowoffset=n1)
+    d_dyx:
+        Must be (d_dy_present, d_dx_present)
+    divable: ndarray(bool)
+        Map of which cells are avaialble to calculate 2D derivatives;
+        i.e. gridcells that are fully surrounded by gridcells with
+        data (D_DATA), even if the gridcell itself is undefined.
+        See get_divable()
+    dyx: (dy, dx)
+        Grid spacing in each direction
+    rows,cols,vals:
+        Lists to which to append (row,col,val) for each item in
+        the sparse matrix being created.
+    factor:
+        Multiple values by this
+
+    """
+
+    n1 = divable.shape[0] * divable.shape[1]
+
+    div_matrix((d_dy_present, d_dx_present), divable, dyx, rows,cols,vals)
+    curl_matrix((d_dy_present, d_dx_present), divable, dyx, rows,cols,vals, rowoffset=n1)
 
 
 # -------------------------------------------------------
 def cut_subset(val):
+    """Temporary function to cut down the size of our sample problem."""
+
 #    subval = val[406:420, 406:420]
     subval = val[306:520, 306:520]
     return subval
@@ -124,18 +203,36 @@ def cut_subset(val):
 # -------------------------------------------------------
 def get_divable(idomain2):
     """Returns a domain (true/false array) for which the divergence can be
-    computed, using ONLY center differences."""
+    computed, using ONLY center differences.
+
+    idomain2: ndarray(bool)
+        Map of which points in the domain have data.
+    """
     domain2 = np.zeros(idomain2.shape, dtype=bool)
     # Loop 1..n-1 to maintain a bezel around the edge
     for jj in range(1,idomain2.shape[0]-1):
         for ii in range(1,idomain2.shape[1]-1):
             domain2[jj,ii] = (idomain2[jj+1,ii] and idomain2[jj-1,ii] and idomain2[jj,ii+1] and idomain2[jj,ii-1])
     return domain2
-
-
-# -------------------------------------------------------
 # --------------------------------------------------------
-def get_div_curl(vvel2, uvel2, divable_data2):
+def get_div_curl(vvel2, uvel2, divable_data2, dyx=(1.,1.)):
+    """Computes divergence and curl of a (v,u) velocity field.
+
+    vvel2: ndarray(j,i)
+        y component of velocity field
+    uvel2: ndarray(j,i)
+        x component of velocity field
+    divable_data2: ndarray(j,i, dtype=bool)
+        Map of points in domain where to compute divergence and curl
+        See get_divable()
+    dyx:
+        Size of gridcells in y and x dimensions.
+        By default set to 1, because having div and cur scaled similarly to the
+        original values works best to make a balanced LSQR matrix.
+
+    Returns: (div, curl) ndarray(j,i)
+        Returns divergence and curl, computed on the domain divable_data2
+    """
 
     n1 = divable_data2.shape[0] * divable_data2.shape[1]
 
@@ -143,9 +240,7 @@ def get_div_curl(vvel2, uvel2, divable_data2):
     rows = list()
     cols = list()
     vals = list()
-#    dyx = (5000, 5000)
-    dyx = (1.,1.)
-    dc_matrix(d_dyx_fns[True],
+    dc_matrix((d_dy_present, d_dx_present),
         divable_data2,
         dyx, rows,cols,vals)
     M = scipy.sparse.coo_matrix((vals, (rows,cols)),
@@ -166,34 +261,6 @@ def get_div_curl(vvel2, uvel2, divable_data2):
     curl2[np.logical_not(divable_data2)] = np.nan
 
     return div2,curl2
-
-# --------------------------------------------------------
-def remove_unused_rows(rows,cols,vals,bb,  n1):
-    # Renumber the rows
-    rows1 = dict((r,0) for r in rows)
-    row_renumber = dict((r,i) for i,r in enumerate(rows1.keys()))
-    rows2 = [row_renumber[r] for r in rows]
-    bb2 = [bb[i] for i,r in enumerate(rows1.keys())]
-
-
-    if True:
-        cols1 = dict((r,0) for r in cols)
-        col_renumber = dict((r,i) for i,r in enumerate(cols1.keys()))
-        cols2 = [col_renumber[r] for r in cols]
-        cols_oldvnew = np.array(list(cols1.keys()), dtype='i') - 1
-        ncols_new = len(cols1)
-    else:
-        cols_oldvnew = None
-        cols2 = cols
-        ncols_new = n1*2
-
-    nrows_new = len(rows1)
-    
-    M = scipy.sparse.coo_matrix((vals, (rows2,cols2)),
-        shape=(nrows_new, ncols_new)).tocsc()
-    rhs = np.array(bb2)
-
-    return M,rhs,cols_oldvnew
 
 # --------------------------------------------------------
 def main():
@@ -287,7 +354,7 @@ def main():
     vals = list()
 #    dyx = (5000, 5000)
     dyx = (1.,1.)
-    dc_matrix(d_dyx_fns[True], domain_used2,
+    dc_matrix((d_dy_present, d_dx_present), domain_used2,
         dyx, rows,cols,vals)
 
     # ----------- Create dc vector in subspace as right hand side
@@ -333,26 +400,12 @@ def main():
     print('bb ', sum(1 if np.isnan(x) else 0 for x in bb))
 
     # ----------- Remove unused rows
-#    print('len bb = ', len(bb))
-##    rows,cols,vals,bb,cols_oldvnew = remove_unused_rows(rows,cols,vals,bb)
-#    print('len bb = ', len(bb))
-#
-#    # ----------- Convert to a (rectangular) matrix
-#    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
-#        shape=(nrlen(bb), n1*2)).tocsc()
-#    print('nrows= ', len(bb))
-#    rhs = np.array(bb)
-
-
 
     print(' *********** bb nan2 ', np.sum(np.isnan(bb)))
     print('M0 shape ',(len(bb), n1*2))
-    if False:
-        M,rhs,cols_oldvnew = remove_unused_rows(rows,cols,vals,bb, n1)
-    else:
-        M = scipy.sparse.coo_matrix((vals, (rows,cols)),
-            shape=(len(bb),n1*2)).tocsc()
-        rhs = np.array(bb)
+    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
+        shape=(len(bb),n1*2)).tocsc()
+    rhs = np.array(bb)
     print('M len ', M.shape, len(rhs))
     print(' *********** rhs nan2 ', np.sum(np.isnan(rhs)))
 
