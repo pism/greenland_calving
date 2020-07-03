@@ -8,8 +8,6 @@ import uafgi.indexing
 import scipy.ndimage
 import math
 from scipy import signal
-from numpy.fft  import fft2, ifft2
-import scipy.ndimage
 
 #np.set_printoptions(threshold=sys.maxsize)
 
@@ -20,10 +18,6 @@ D_DATA = 2          # There are data here
 
 # Indices and weights for first-order ceter fine difference.
 center_diff = ((-1,1), (-.5,.5))
-
-# https://laurentperrinet.github.io/sciblog/posts/2017-09-20-the-fastest-2d-convolution-in-the-world.html
-def np_fftconvolve(A,B):
-    return np.real(ifft2(fft2(A)*fft2(B, s=A.shape)))
 
 # -------------------------------------------------------
 def get_indexing(ndarr):
@@ -198,16 +192,6 @@ def dc_matrix(d_dyx, divable, dyx, rows,cols,vals,
 
     div_matrix((d_dy_present, d_dx_present), divable, dyx, rows,cols,vals)
     curl_matrix((d_dy_present, d_dx_present), divable, dyx, rows,cols,vals, rowoffset=n1)
-
-
-# -------------------------------------------------------
-def cut_subset(val):
-    """Temporary function to cut down the size of our sample problem."""
-
-#    subval = val[406:420, 406:420]
-    subval = val[306:520, 306:520]
-#    return subval
-    return val
 
 # -------------------------------------------------------
 def get_divable(idomain2):
@@ -583,28 +567,27 @@ def main2():
         print('Fill Value {}'.format(nc_uvel._FillValue))
 
 
-    vsvel2 = cut_subset(vsvel2)
-    usvel2 = cut_subset(usvel2)
-
     # ------------ Read amount of ice (thickness)
     with netCDF4.Dataset('outputs/bedmachine/W69.10N-thickness.nc') as nc:
         thk2 = nc.variables['thickness'][:].astype(np.float64)
 
-    thk2 = cut_subset(thk2)
-    # Filter amount, it's from a lower resolution
+    # Filter thickness, it's from a lower resolution
     thk2 = scipy.ndimage.gaussian_filter(thk2, sigma=2.0)
 
+    # Amount is in units [kg m-2]
     rhoice = 918.    # [kg m-3]: Convert thickness from [m] to [kg m-2]
     amount2 = thk2 * rhoice
 
     # ------------ Set up the domain map (classify gridcells)
-    dmap = get_dmap(vsvel2, thk2, 300., 3000., 20000., (100.,100.))
+    dmap = get_dmap(vsvel2, thk=thk2, threshold=300.,
+        dist_channel=3000., dist_front=20000., dyx=(100.,100.))
 
-    with netCDF4.Dataset('dmap.nc', 'w') as nc:
-        nc.createDimension('y', vsvel2.shape[0])
-        nc.createDimension('x', vsvel2.shape[1])
-        nc.createVariable('amount', 'd', ('y','x'))[:] = amount2
-        nc.createVariable('dmap', 'd', ('y','x'))[:] = dmap
+    diagnostics['thk'] = thk
+#    with netCDF4.Dataset('dmap.nc', 'w') as nc:
+#        nc.createDimension('y', vsvel2.shape[0])
+#        nc.createDimension('x', vsvel2.shape[1])
+#        nc.createVariable('amount', 'd', ('y','x'))[:] = amount2
+#        nc.createVariable('dmap', 'd', ('y','x'))[:] = dmap
 
     # ----------- Store it
     vv3,uu3,diagnostics = fill_surface_flow(vsvel2, usvel2, amount2, dmap,
