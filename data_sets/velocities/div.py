@@ -6,6 +6,10 @@ import sys
 from pism.util import fill_missing_petsc
 import uafgi.indexing
 import scipy.ndimage
+import math
+from scipy import signal
+from numpy.fft  import fft2, ifft2
+import scipy.ndimage
 
 #np.set_printoptions(threshold=sys.maxsize)
 
@@ -16,6 +20,10 @@ D_DATA = 2          # There are data here
 
 # Indices and weights for first-order ceter fine difference.
 center_diff = ((-1,1), (-.5,.5))
+
+# https://laurentperrinet.github.io/sciblog/posts/2017-09-20-the-fastest-2d-convolution-in-the-world.html
+def np_fftconvolve(A,B):
+    return np.real(ifft2(fft2(A)*fft2(B, s=A.shape)))
 
 # -------------------------------------------------------
 def get_indexing(ndarr):
@@ -198,7 +206,8 @@ def cut_subset(val):
 
 #    subval = val[406:420, 406:420]
     subval = val[306:520, 306:520]
-    return subval
+#    return subval
+    return val
 
 # -------------------------------------------------------
 def get_divable(idomain2):
@@ -262,15 +271,100 @@ def get_div_curl(vvel2, uvel2, divable_data2, dyx=(1.,1.)):
 
     return div2,curl2
 # ----------------------------------------------------------
-def fill_flow(vvel2, uvel2, dmap2, clear_divergence=False, prior_weight=0.8):
+def disc_stencil(radius, dyx):
+    """Creates a disc-shaped convolution stencil"""
+
+    shape = tuple(math.ceil(radius*2. / dyx[i]) for i in range(0,2))
+    st = np.zeros(shape, dtype='float32')
+    for j in range(0,shape[0]):
+        y  = (j+.5)*dyx[0]
+        for i in range(0,shape[1]):
+            x = (i+.5)*dyx[1]
+            st[j,i] = (np.sqrt((y-radius)*(y-radius) + (x-radius)*(x-radius)) <= radius)
+
+    return st
+
+
+def get_dmap(values, thk, threshold, dist_channel, dist_front, dyx):
+    """Creates a domain of gridcells within distance of cells in amount2
+    that are >= threshold."""
+
+    # Sobel-filter the amount variable
+    sx = scipy.ndimage.sobel(thk, axis=0)
+    sy = scipy.ndimage.sobel(thk, axis=1)
+    sob = np.hypot(sx,sy)
+
+    # Get original domain, where thickness is changing rapidly
+    domain0 = (sob > threshold).astype('float32')
+
+    # Create a disc-shaped mask, used to convolve
+    stencil = disc_stencil(dist_channel, dyx)
+    print('stencil shape ',stencil.shape)
+
+    # Create domain of points close to original data points
+    domain = (signal.convolve2d(domain0, stencil, mode='same') != 0)
+
+    # Points with data
+    data = (np.logical_not(np.isnan(values)))
+
+    # Points close to the calving front
+    # Get maximum value of Sobel fill.  This will be an ice cliff,
+    # somewhere on the calving front.
+    sobmax = np.max(sob)
+    front = (sob >= .95*sobmax).astype('float32')
+    fc = scipy.ndimage.measurements.center_of_mass(front)
+    front_center = (fc[0]*dyx[0], fc[1]*dyx[1])
+
+    # Create the dmap
+    dmap = np.zeros(thk.shape, dtype='i') + D_UNUSED
+    dmap[domain] = D_MISSING
+    dmap[data] = D_DATA
+    dmap[np.logical_not(domain)] = D_UNUSED
+#    dmap[:] = D_DATA
+
+    # Focus on area near calving front
+    dthresh = dist_front*dist_front
+    for j in range(0,dmap.shape[0]):
+        y  = (j+.5)*dyx[0]
+        y2 = (y-front_center[0])*(y-front_center[0])
+        for i in range(0,dmap.shape[1]):
+            x = (i+.5)*dyx[1]
+            x2 = (x-front_center[1])*(x-front_center[1])
+            if y2+x2 > dthresh:
+                dmap[j,i] = D_UNUSED
+
+
+    return dmap
+
+# ----------------------------------------------------------
+def reduce_column_rank(cols):
+    col_set = dict((c,None) for c in cols)    # Keep order
+    print('len(col_set) = {} -> {}'.format(len(cols), len(col_set)))
+    mvs_cols = list(col_set.keys())
+    svm_cols = dict((c,i) for i,c in enumerate(mvs_cols))
+    cols_d = [svm_cols[c_s] for c_s in cols]
+    print(cols_d[:100])
+    return cols_d,mvs_cols
+
+def reduce_row_rank(rows, bb):
+    row_set = dict((c,None) for c in rows)    # Keep order
+    print('len(row_set) = {} -> {}'.format(len(rows), len(row_set)))
+    mvs_rows = list(row_set.keys())
+    svm_rows = dict((c,i) for i,c in enumerate(mvs_rows))
+    rows_d = [svm_rows[c_s] for c_s in rows]
+#    bb_d = [svm_rows[c_s] for c_s in bb]
+    bb_d = [bb[mvs_rows[i]] for i in range(0,len(mvs_rows))]
+    return rows_d,bb_d,mvs_rows
+
+# ----------------------------------------------------------
+def fill_flow(vvel2, uvel2, dmap, clear_divergence=False, prior_weight=0.8):
     """
     vvel, uvel: ndarray(j,i)
         Volumetric flow fields (should have divergence=0)
-    dmap2: ndarray(j,i)
-        Per-gridcell map of the domain.
-        D_UNUSED: Gridcell is not part of the domain
-        D_MISSING: Gridcell is part of the domain but data are missing; should be filled in
-        D_DATA: Data present
+    data_map: ndarray(j,i, dtype=bool)
+        True where there is data, False elsewhere
+    ice_map:
+        True where there is ice, False elsewhere
     clear_divergence:
         if True, zero out the divergence when filling.
         Otherwise, just Poisson-fill existing (non-zero) divergence.
@@ -285,21 +379,23 @@ def fill_flow(vvel2, uvel2, dmap2, clear_divergence=False, prior_weight=0.8):
 
     # ------------ Select subspace of gridcells on which to operate
     # Select cells with data
-    divable_data2 = get_divable(dmap2==D_DATA)
+    divable_data2 = get_divable(dmap==D_DATA)
     indexing_data = get_indexing(divable_data2)
 
     # n1 = number of gridcells, even unused cells.
     # LSQR works OK with unused cells in its midst.
-    n1 = dmap2.shape[0] * dmap2.shape[1]
+    n1 = dmap.shape[0] * dmap.shape[1]
 
     # -------------- Compute divergence and curl
+    print('Computing divergence and curl')
     div2,curl2 = get_div_curl(vvel2, uvel2, divable_data2)
     diagnostics['div'] = div2
     diagnostics['curl'] = curl2
 
     # ---------- Apply Poisson Fill to div
+    print('Applying Poisson fill')
     if clear_divergence:
-        div2_f = np.zeros(dmap2.shape)
+        div2_f = np.zeros(dmap.shape)
     else:
         div2_m = np.ma.array(div2, mask=(np.isnan(div2)))
         div2_fv,_ = fill_missing_petsc.fill_missing(div2_m)
@@ -313,7 +409,6 @@ def fill_flow(vvel2, uvel2, dmap2, clear_divergence=False, prior_weight=0.8):
     curl2_f = curl2_fv[:].reshape(curl2.shape)
     diagnostics['curl_filled'] = curl2_f
 
-
     # ================================== Set up LSQR Problem
     rows = list()
     cols = list()
@@ -322,7 +417,8 @@ def fill_flow(vvel2, uvel2, dmap2, clear_divergence=False, prior_weight=0.8):
     # --------- Setup domain to compute filled-in data EVERYWHERE
     # This keeps the edges of the domain as far as possible from places where
     # "the action" happens.  Edge effects can cause stippling problems.
-    divable_used2 = np.ones(dmap2.shape, dtype=bool)
+#    divable_used2 = np.ones(data_map.shape, dtype=bool)
+    divable_used2 = (dmap != D_UNUSED)
     # Make a bezel around the edge
     divable_used2[0,:] = False
     divable_used2[-1,:] = False
@@ -333,6 +429,7 @@ def fill_flow(vvel2, uvel2, dmap2, clear_divergence=False, prior_weight=0.8):
     # This ensures our solution has the correct divergence and curl
     # This will include some empty rows and columns in the LSQR
     # matrix.  That is not a problem for LSQR.
+    print('Computing div-curl matrix to invert')
     dyx = (1.,1.)
     dc_matrix((d_dy_present, d_dx_present), divable_used2,
         dyx, rows,cols,vals)
@@ -348,10 +445,11 @@ def fill_flow(vvel2, uvel2, dmap2, clear_divergence=False, prior_weight=0.8):
     # This ensures our answer (almost) equals the original, where we
     # had data.
     # Larger --> Avoids changing original data, but more stippling
+    print('Adding additonal constraints')
     for jj in range(0, divable_data2.shape[0]):
         for ii in range(0, divable_data2.shape[1]):
 
-            if dmap2[jj,ii] == D_DATA:
+            if dmap[jj,ii] == D_DATA:
 
                 ku = indexing_data.tuple_to_index((jj,ii))
                 try:
@@ -369,23 +467,35 @@ def fill_flow(vvel2, uvel2, dmap2, clear_divergence=False, prior_weight=0.8):
                     pass
 
     # ================= Solve the LSQR Problem
+    ncols_s = n1*2
+    cols_d,mvs_cols = reduce_column_rank(cols)    # len(cols)==n1*2
+    nrows_s = len(bb)
+    rows_d,bb_d,mvs_rows = reduce_row_rank(rows, bb)
+#    rows_d = rows
+#    bb_d = bb
+#    mvs_rows = list(range(0,len(bb)))
 
     # ---------- Convert to SciPy Sparse Matrix Format
-    M = scipy.sparse.coo_matrix((vals, (rows,cols)),
-        shape=(len(bb),n1*2)).tocsc()
-    rhs = np.array(bb)
+    M = scipy.sparse.coo_matrix((vals, (rows_d,cols_d)),
+        shape=(len(mvs_rows),len(mvs_cols))).tocsc()
+    print('LSQR Matrix complete: shape={}, nnz={}'.format(M.shape, len(vals)))
+    rhs = np.array(bb_d)
 
     # ----------- Solve for vu
-    vu,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,rhs, damp=.0005)#, iter_lim=3000)
+    print('Solving LSQR')
+    vu_d,istop,itn,r1norm,r2norm,anorm,acond,arnorm,xnorm,var = scipy.sparse.linalg.lsqr(M,rhs, damp=.0005)#, iter_lim=100)
+
+    vu = np.zeros(ncols_s) + np.nan
+    vu[mvs_cols] = vu_d
 
     # ----------- Convert back to 2D
-    vv3 = np.reshape(vu[:n1], dmap2.shape)
-    uu3 = np.reshape(vu[n1:], dmap2.shape)
+    vv3 = np.reshape(vu[:n1], dmap.shape)
+    uu3 = np.reshape(vu[n1:], dmap.shape)
 
 
     return vv3, uu3, diagnostics
 
-def fill_surface_flow(vsvel2, usvel2, amount2, dmap2, clear_divergence=False, prior_weight=0.8):
+def fill_surface_flow(vsvel2, usvel2, amount2, dmap, clear_divergence=False, prior_weight=0.8):
     """
     vsvel2, usvel2: np.array(j,i)
         Surface velocities
@@ -395,11 +505,8 @@ def fill_surface_flow(vsvel2, usvel2, amount2, dmap2, clear_divergence=False, pr
         Multiply surface velocity by this to get volumetric velocity
         Generally, could be depth of ice.
         (whose divergence should be 0)
-    dmap2: ndarray(j,i)
-        Per-gridcell map of the domain.
-        D_UNUSED: Gridcell is not part of the domain
-        D_MISSING: Gridcell is part of the domain but data are missing; should be filled in
-        D_DATA: Data present
+    data_map: ndarray(j,i, dtype=bool)
+        True where there is data, False elsewhere
     clear_divergence:
         if True, zero out the divergence when filling.
         Otherwise, just Poisson-fill existing (non-zero) divergence.
@@ -420,13 +527,14 @@ def fill_surface_flow(vsvel2, usvel2, amount2, dmap2, clear_divergence=False, pr
 
     diagnostics = dict()
 
+
     # Get volumetric velocity from surface velocity
     vvel2 = vsvel2 * amount2
     uvel2 = usvel2 * amount2
     diagnostics['vvel'] = vvel2
     diagnostics['uvel'] = uvel2
 
-    vvel_filled,uvel_filled,d2 = fill_flow(vvel2, uvel2, dmap2, clear_divergence=clear_divergence, prior_weight=prior_weight)
+    vvel_filled,uvel_filled,d2 = fill_flow(vvel2, uvel2, dmap, clear_divergence=clear_divergence, prior_weight=prior_weight)
     diagnostics.update(d2.items())
     diagnostics['vvel_filled'] = vvel_filled
     diagnostics['uvel_filled'] = uvel_filled
@@ -443,12 +551,20 @@ def fill_surface_flow(vsvel2, usvel2, amount2, dmap2, clear_divergence=False, pr
     vvs3 = scipy.ndimage.gaussian_filter(vvs3, sigma=1.0)
     uus3 = scipy.ndimage.gaussian_filter(uus3, sigma=1.0)
 
-    return vvs3, uus3, diagnostics
+    # Create pastiche of original + new
+    missing2 = np.isnan(vsvel2)
+    vvs4 = np.copy(vsvel2)
+    vvs4[missing2] = vvs3[missing2]
+    uus4 = np.copy(usvel2)
+    uus4[missing2] = uus3[missing2]
+
+
+    return vvs4, uus4, diagnostics
 
 
 
 # --------------------------------------------------------
-def main():
+def main2():
 
     # ========================= Read Data from Input Files
     # --------- Read uvel and vvel
@@ -471,27 +587,29 @@ def main():
     usvel2 = cut_subset(usvel2)
 
     # ------------ Read amount of ice (thickness)
-    rhoice = 918.    # [kg m-3]: Convert thickness from [m] to [kg m-2]
     with netCDF4.Dataset('outputs/bedmachine/W69.10N-thickness.nc') as nc:
-        amount2 = nc.variables['thickness'][:].astype(np.float64) * rhoice
+        thk2 = nc.variables['thickness'][:].astype(np.float64)
 
-    amount2 = cut_subset(amount2)
+    thk2 = cut_subset(thk2)
     # Filter amount, it's from a lower resolution
-    amount2 = scipy.ndimage.gaussian_filter(amount2, sigma=2.0)
+    thk2 = scipy.ndimage.gaussian_filter(thk2, sigma=2.0)
 
+    rhoice = 918.    # [kg m-3]: Convert thickness from [m] to [kg m-2]
+    amount2 = thk2 * rhoice
 
     # ------------ Set up the domain map (classify gridcells)
-    dmap2 = np.zeros(vsvel2.shape, dtype='i') + D_UNUSED
-    dmap2[amount2 > 0] = D_DATA
-    dmap2[np.where(np.logical_and(
-        amount2 > 0,
-        np.isnan(vsvel2)
-        ))] = D_MISSING
+    dmap = get_dmap(vsvel2, thk2, 300., 3000., 20000., (100.,100.))
 
+    with netCDF4.Dataset('dmap.nc', 'w') as nc:
+        nc.createDimension('y', vsvel2.shape[0])
+        nc.createDimension('x', vsvel2.shape[1])
+        nc.createVariable('amount', 'd', ('y','x'))[:] = amount2
+        nc.createVariable('dmap', 'd', ('y','x'))[:] = dmap
 
     # ----------- Store it
-    vv3,uu3,diagnostics = fill_surface_flow(vsvel2, usvel2, amount2, dmap2,
+    vv3,uu3,diagnostics = fill_surface_flow(vsvel2, usvel2, amount2, dmap,
         clear_divergence=True, prior_weight=0.8)
+    diagnostics['dmap'] = dmap
 
     with netCDF4.Dataset('x.nc', 'w') as nc:
 
@@ -511,6 +629,8 @@ def main():
         for vname,val in diagnostics.items():
             nc.createVariable(vname, 'd', ('y','x'))[:] = val
 
+def main():
+    st = disc_stencil(10, (1.,1.))
+    print(st)
 
-
-main()
+main2()
