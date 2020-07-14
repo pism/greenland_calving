@@ -1,5 +1,5 @@
 import os,sys,argparse
-from uafgi import make, glaciers
+from uafgi import make,glaciers,flowfill
 from uafgi.pism import calving, bedmachine
 from uafgi.nsidc import nsidc0481
 
@@ -23,11 +23,13 @@ def main():
     # --------------------------------------------------------------
     # Create the internal Makefile
 
+    grid='W69.10N'
+
     # Merge the velocities into a single file
     if args.local:
-        velocity_file = os.path.join(ODIR, 'velocity', 'TSX_W69.10N_2008_2020_pism.nc')
+        velocity_file = os.path.join(ODIR, 'velocity', 'TSX_'+grid+'_2008_2020_pism_filled.nc')
     else:
-        filter_attrs=dict(source='TSX', grid='W69.10N')
+        filter_attrs=dict(source='TSX', grid=grid)
         rule = glaciers.merge(makefile, 'data', nsidc0481.parse, os.path.join(ODIR, 'velocity'),
             os.path.join(ODIR, '{source}_{grid}_2008_2020.nc'),
             ('vx','vy'),
@@ -36,9 +38,27 @@ def main():
             blacklist=nsidc0481.blacklist).rule
 
         # Convert velocity file to PISM format
-        rule = glaciers.fixup_velocities_for_pism(makefile, rule.outputs[0], os.path.join(ODIR, 'velocity')).rule
+        rule = glaciers.rename_velocities_for_pism(makefile, rule.outputs[0], os.path.join(ODIR, 'velocity')).rule
         velocity_file = rule.outputs[0]
         outputs.append(velocity_file)
+
+        # Get the global BedMachine file
+        rule = bedmachine.fixup_pism(makefile, BEDMACHINE_FILE, os.path.join(ODIR, 'bedmachine'))
+        global_bedmachine_path = rule.outputs[0]
+        outputs.append(global_bedmachine_path)
+
+        # Extract to the local BedMachine file
+        rule = bedmachine.extract(makefile, grid, global_bedmachine_path, velocity_file, ODIR).rule
+        local_bedmachine_path = rule.outputs[0]
+
+        # Fill in
+        rule = flowfill.fill_surface_flow_rule(makefile, velocity_file,
+            local_bedmachine_path, ODIR).rule
+        merged_filled_path = rule.outputs[0]
+        outputs.append(merged_filled_path)
+
+
+
 
 #    # Fixup bedmachine file
 #    if args.local:
