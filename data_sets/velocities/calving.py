@@ -38,7 +38,7 @@ def main():
             blacklist=nsidc0481.blacklist).rule
 
         # Convert velocity file to PISM format
-        rule = glaciers.rename_velocities_for_pism(makefile, rule.outputs[0], os.path.join(ODIR, 'velocity')).rule
+        rule = glaciers.rename_velocities_for_pism(makefile, rule.outputs[0], ODIR).rule
         velocity_file = rule.outputs[0]
         outputs.append(velocity_file)
 
@@ -50,14 +50,13 @@ def main():
         # Extract to the local BedMachine file
         rule = bedmachine.extract(makefile, grid, global_bedmachine_path, velocity_file, ODIR).rule
         local_bedmachine_path = rule.outputs[0]
+        outputs.append(local_bedmachine_path)
 
         # Fill in
         rule = flowfill.fill_surface_flow_rule(makefile, velocity_file,
             local_bedmachine_path, ODIR).rule
         merged_filled_path = rule.outputs[0]
         outputs.append(merged_filled_path)
-
-
 
 
 #    # Fixup bedmachine file
@@ -68,16 +67,22 @@ def main():
 #        bedmachine_file = rule.outputs[0]
 #        outputs.append(bedmachine_file)
 #
-#    # Compute calving based on velocity file
+    # Compute calving based on velocity file
+    rule = calving.compute(
+        makefile, local_bedmachine_path, merged_filled_path,
+        (merged_filled_path,('u_ssa_bc',)),
+        CALVING_OUTPUT).rule
 #    rule = calving.compute(
-#        makefile, bedmachine_file, velocity_file,
+#        makefile, local_bedmachine_path, velocity_file,
 #        (velocity_file,('u_ssa_bc',)),
 #        CALVING_OUTPUT).rule
-#    outputs.extend(rule.outputs)
+
+    outputs.extend(rule.outputs)
 
     # -------------------------------------------------------------
 
 #    make.build(makefile, ('outputs/TSX_W69.10N_vy_merged.nc',))
+    print('********8 outputs ', outputs)
 
     # Build the outputs of that rule
     make.build(makefile, outputs)
