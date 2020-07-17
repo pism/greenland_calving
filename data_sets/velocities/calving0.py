@@ -17,7 +17,7 @@ positive in the ice-covered area. The enthalpy value does not matter.
 # Script in the main PISM repo, it's in examples/ross/preprocess.py
 #input_file = "~/github/pism/pism/examples/ross/Ross_combined.nc"
 #input_file = "Ross_combined.nc"
-velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism.nc'
+velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
 bedmachine_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W69.10N.nc'
 import PISM
 ctx = PISM.Context()
@@ -61,8 +61,8 @@ geometry = PISM.Geometry(grid)
 # read the first (0th) record of ice thickness and bed elevation
 #geometry.ice_thickness.read(bedmachine_file, 0)
 #geometry.bed_elevation.read(bedmachine_file, 0)
-geometry.ice_thickness.regrid(bedmachine_file)
-geometry.bed_elevation.regrid(bedmachine_file)
+geometry.ice_thickness.regrid(bedmachine_file, critical=True)
+geometry.bed_elevation.regrid(bedmachine_file, critical=True)
 geometry.sea_level_elevation.set(0.0)
 
 # Compute ice_free_thickness_standard based on what we just set above.
@@ -97,3 +97,24 @@ output.close()
 
 # this is a way to access the calving rate in a Python script without saving to a file
 # rate = model.calving_rate().numpy()
+
+front_retreat = PISM.FrontRetreat(grid)
+
+retreat_rate = PISM.IceModelVec2S(grid, "total_retreat_rate", PISM.WITHOUT_GHOSTS)
+retreat_rate.set_attrs("output", "rate of ice front retreat", "m / s", "m / s", "", 0)
+
+# Use our calving for retreat rate: produces dtmax_s = NaN (_s = seconds)
+retreat_rate.copy_from(model.calving_rate())
+# Use this, and it produces a super-large dtmax_s
+#retreat_rate.set(0.0)
+# Do this, and it produces a "resonable" dtmax_s
+#retreat_rate.set(1000.0)
+
+bc_mask = PISM.IceModelVec2Int(grid, "bc_mask", PISM.WITH_GHOSTS)
+bc_mask.set(0.0)
+
+dtmax_s = front_retreat.max_timestep(
+    geometry.cell_type,
+    bc_mask, retreat_rate).value()
+
+print('dtmax_s = {} s ({} days)'.format(dtmax_s, dtmax_s/86400.))
