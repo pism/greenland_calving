@@ -103,12 +103,52 @@ front_retreat = PISM.FrontRetreat(grid)
 retreat_rate = PISM.IceModelVec2S(grid, "total_retreat_rate", PISM.WITHOUT_GHOSTS)
 retreat_rate.set_attrs("output", "rate of ice front retreat", "m / s", "m / s", "", 0)
 
+
+## Smear to neighborhing pixels
+#rrnp = retreat_rate.numpy()
+#for j in range(1,rrnp.shape[0]-1):
+#    for i in range(1,rrnp.shape[1]-1):
+#        if rrnp[j,i] != 0:
+#            continue
+#
+#        # Only create a value for zero values
+#        sum = 0.0
+#        n = 0
+#        for dj in range(-1,2):
+#            for di in range(-1,2):
+#                if rrnp[j+dj,i+di] != 0:
+#                    sum += rrnp[j+dj,i+di]
+#                    n += 1
+#        if n > 0:
+#            print('Setting: ({},{}) = {}'.format(j,i,sum/n))
+#            rrnp[j,i] = sum / n
+#
+#print('rrnp.shape = {}'.format(rrnp.shape))
+#with PISM.vec.Access(nocomm=[retreat_rate]):
+#    for (i,j) in grid.points():
+#        retreat_rate[i,j] = rrnp[j,i]
+
+
+
+#output = PISM.util.prepare_output("rrnp.nc")
+#model.calving_rate().write(output)
+#geometry.ice_thickness.write(output)    # One more thing to write
+#output.close()
+
+
+
 # Use our calving for retreat rate: produces dtmax_s = NaN (_s = seconds)
 retreat_rate.copy_from(model.calving_rate())
 # Use this, and it produces a super-large dtmax_s
 #retreat_rate.set(0.0)
 # Do this, and it produces a "resonable" dtmax_s
 #retreat_rate.set(1000.0)
+
+with PISM.vec.Access(retreat_rate):
+    for i,j in grid.points():
+        # Conditional is funky because any comparison with a NaN is false.
+        if not (retreat_rate[i, j] < 1e6):
+            retreat_rate[i, j] = 0
 
 bc_mask = PISM.IceModelVec2Int(grid, "bc_mask", PISM.WITH_GHOSTS)
 bc_mask.set(0.0)

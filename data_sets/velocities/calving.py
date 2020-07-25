@@ -49,12 +49,16 @@ def main():
 
         # Extract to the local BedMachine file
         rule = bedmachine.extract(makefile, grid, global_bedmachine_path, velocity_file, ODIR).rule
+
+        # Merge 2 BedMachine files into one
+        rule = bedmachine.merge(makefile, rule.outputs, ODIR).rule
         local_bedmachine_path = rule.outputs[0]
         outputs.append(local_bedmachine_path)
 
+
         # Fill in
         rule = flowfill.fill_surface_flow_rule(makefile, velocity_file,
-            local_bedmachine_path, ODIR).rule
+            local_bedmachine_path, ODIR, max_timesteps=3).rule
         merged_filled_path = rule.outputs[0]
         outputs.append(merged_filled_path)
 
