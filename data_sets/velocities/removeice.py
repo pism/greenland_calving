@@ -1,4 +1,4 @@
-import sys
+import sys,os,subprocess
 import numpy as np
 import netCDF4
 import geojson
@@ -11,12 +11,14 @@ import shapely.geometry
 from osgeo import ogr
 import shapely.ops
 import shapely.wkt, shapely.wkb
+from uafgi import ioutil,ncutil
 
 # Removes ice from downstream of a calving front.
 
 trace_file = 'Amaral_TerminusTraces/TemporalSet/Jakobshavn/Jakobshavn10_2015-08-01_2015-08-23.geojson.json'
 velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
 bedmachine_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W69.10N.nc'
+ts = 0    # Timestep in velocity_file
 
 def iter_features(trace_files):
     for trace_file in trace_files:
@@ -39,12 +41,14 @@ with netCDF4.Dataset(velocity_file) as nc:
     bounding_xx = nc.variables['x'][:]
     bounding_yy = nc.variables['y'][:]
 
-with netCDF4.Dataset(bedmachine_file) as nc:
-    thk = nc.variables['thickness'][:]
-
 map_crs = pyproj.CRS.from_string(wks_s)
 with open('crs.wkt', 'w') as fout:
     fout.write(wks_s)
+
+with netCDF4.Dataset(bedmachine_file) as nc:
+    thk = nc.variables['thickness'][:]
+    bed = nc.variables['bed'][:]
+
 
 
 # Standard GeoJSON Coordinate Reference System (CRS)
@@ -151,38 +155,68 @@ for i,poly in enumerate(polygons):
         fout.write(shapely.wkt.dumps(poly))
         fout.write('\n')
 
+with ioutil.tmp_dir() as tmp:
 
-# https://gis.stackexchange.com/questions/52705/how-to-write-shapely-geometries-to-shapefiles
-print('yyyyyyyyyyy')
-for i,poly in enumerate(polygons):
-    print('xxxxxxxxxxxxxx ',i)
+    # https://gis.stackexchange.com/questions/52705/how-to-write-shapely-geometries-to-shapefiles
+#    for i,poly in enumerate(polygons):
+    i,poly = (0,polygons[0])
+    if True:
 
-    # Now convert it to a shapefile with OGR    
-    driver = ogr.GetDriverByName('Esri Shapefile')
-    ds = driver.CreateDataSource('poly{}.shp'.format(i))
-    layer = ds.CreateLayer('', None, ogr.wkbPolygon)
+        # Now convert it to a shapefile with OGR    
+        driver = ogr.GetDriverByName('Esri Shapefile')
+        poly_fname = os.path.join(tmp, 'poly{}.shp'.format(i))
+        print('poly_fname ',poly_fname)
+        ds = driver.CreateDataSource(poly_fname)
+        layer = ds.CreateLayer('', None, ogr.wkbPolygon)
 
-    # Add one attribute
-    layer.CreateField(ogr.FieldDefn('id', ogr.OFTInteger))
-    defn = layer.GetLayerDefn()
+        # Add one attribute
+        layer.CreateField(ogr.FieldDefn('id', ogr.OFTInteger))
+        defn = layer.GetLayerDefn()
 
-    ## If there are multiple geometries, put the "for" loop here
+        ## If there are multiple geometries, put the "for" loop here
 
-    # Create a new feature (attribute and geometry)
-    feat = ogr.Feature(defn)
-    feat.SetField('id', 123)
+        # Create a new feature (attribute and geometry)
+        feat = ogr.Feature(defn)
+        feat.SetField('id', 123)
 
-    # Make a geometry, from Shapely object
-    geom = ogr.CreateGeometryFromWkb(poly.wkb)
-    feat.SetGeometry(geom)
+        # Make a geometry, from Shapely object
+        geom = ogr.CreateGeometryFromWkb(poly.wkb)
+        feat.SetGeometry(geom)
 
-    layer.CreateFeature(feat)
-    feat = geom = None  # destroy these
+        layer.CreateFeature(feat)
+        feat = geom = None  # destroy these
 
-    # Save and close everything
-    ds = layer = feat = geom = None
+        # Save and close everything
+        ds = layer = feat = geom = None
 
+    # Mask out based on that polygon
+    bed_masked_fname = os.path.join(tmp, 'bed_masked.nc')
+#    bed_masked_fname = 'x.nc'
+    cmd =  ('gdalwarp', '-cutline', poly_fname, 'NETCDF:{}:bed'.format(bedmachine_file), bed_masked_fname)
+    subprocess.run(cmd)
 
+    # Read bed_maksed
+    with netCDF4.Dataset(bed_masked_fname) as nc:
+        bmask = nc.variables['Band1'][:].mask
+
+# Set bmask to the "downstream" side of the grounding line
+bmask_false = np.logical_not(bmask)
+if np.sum(np.sum(thk[bmask]==0)) < np.sum(np.sum(thk[bmask_false]==0)):
+    bmask = bmask_false
+
+# Remove downstream ice
+thk[np.logical_and(bmask, bed<-100)] = 0
+
+# Store it...
+with netCDF4.Dataset(bedmachine_file, 'r') as nc0:
+    with netCDF4.Dataset('x.nc', 'w') as ncout:
+        cnc = ncutil.copy_nc(nc0, ncout)
+        vars = list(nc0.variables.keys())
+        cnc.define_vars(vars)
+        for var in vars:
+            if var not in {'thickness'}:
+                cnc.copy_var(var)
+        ncout.variables['thickness'][:] = thk
 
 # Make masks out of both polygons (masks that will cover the entire space
 
