@@ -33,7 +33,7 @@ def main():
         rule = glaciers.merge(makefile, 'data', nsidc0481.parse, os.path.join(ODIR, 'velocity'),
             os.path.join(ODIR, '{source}_{grid}_2008_2020.nc'),
             ('vx','vy'),
-#            max_files=3,
+            max_files=3,
             filter_attrs=filter_attrs,
             blacklist=nsidc0481.blacklist).rule
 
@@ -83,10 +83,13 @@ def main():
 
     outputs.extend(rule.outputs)
 
+#    outputs = ['outputs/velocity/TSX_W69.10N_vy_merged.nc']
     # -------------------------------------------------------------
 
 #    make.build(makefile, ('outputs/TSX_W69.10N_vy_merged.nc',))
     print('********8 outputs ', outputs)
+    print(makefile.format())
+    return
 
     # Build the outputs of that rule
     make.build(makefile, outputs)
