@@ -33,9 +33,10 @@ def main():
         rule = glaciers.merge(makefile, 'data', nsidc0481.parse, os.path.join(ODIR, 'velocity'),
             os.path.join(ODIR, '{source}_{grid}_2008_2020.nc'),
             ('vx','vy'),
-            max_files=3,
+#            max_files=3,
             filter_attrs=filter_attrs,
             blacklist=nsidc0481.blacklist).rule
+        merge_rule = rule
 
         # Convert velocity file to PISM format
         rule = glaciers.rename_velocities_for_pism(makefile, rule.outputs[0], ODIR).rule
@@ -48,7 +49,8 @@ def main():
         outputs.append(global_bedmachine_path)
 
         # Extract to the local BedMachine file
-        rule = bedmachine.extract(makefile, grid, global_bedmachine_path, velocity_file, ODIR).rule
+        # Use any random original input file to extract the domain
+        rule = bedmachine.extract(makefile, grid, global_bedmachine_path, merge_rule.inputs[0], ODIR).rule
 
         # Merge 2 BedMachine files into one
         rule = bedmachine.merge(makefile, rule.outputs, ODIR).rule
@@ -58,7 +60,7 @@ def main():
 
         # Fill in
         rule = flowfill.fill_surface_flow_rule(makefile, velocity_file,
-            local_bedmachine_path, ODIR, max_timesteps=3).rule
+            local_bedmachine_path, ODIR).rule
         merged_filled_path = rule.outputs[0]
         outputs.append(merged_filled_path)
 
@@ -81,15 +83,15 @@ def main():
 #        (velocity_file,('u_ssa_bc',)),
 #        CALVING_OUTPUT).rule
 
-    outputs.extend(rule.outputs)
+#    outputs.extend(rule.outputs)
 
 #    outputs = ['outputs/velocity/TSX_W69.10N_vy_merged.nc']
     # -------------------------------------------------------------
 
 #    make.build(makefile, ('outputs/TSX_W69.10N_vy_merged.nc',))
-    print('********8 outputs ', outputs)
-    print(makefile.format())
-    return
+#    print('********8 outputs ', outputs)
+#    print(makefile.format())
+#    return
 
     # Build the outputs of that rule
     make.build(makefile, outputs)
