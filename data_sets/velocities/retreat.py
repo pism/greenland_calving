@@ -15,10 +15,6 @@ import shapely.wkt, shapely.wkb
 from uafgi import ioutil,ncutil
 import datetime
 
-trace_file = 'Amaral_TerminusTraces/TemporalSet/Jakobshavn/Jakobshavn10_2015-08-01_2015-08-23.geojson.json'
-
-velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
-
 def iter_features(trace_files):
     for trace_file in trace_files:
         # https://stackoverflow.com/questions/42753745/how-can-i-parse-geojson-with-python
@@ -30,7 +26,7 @@ def iter_features(trace_files):
             for feature in gj['features']:
                 yield feature
 
-def geojson_converter(vnc)
+def geojson_converter(velocity_file):
 
     """Creates a PROJ convert from geojson lon/lat coordinates to
     coordinates derived from the velocity file.
@@ -39,27 +35,28 @@ def geojson_converter(vnc)
         velocity file, opened
 
     """
-    wks_s = vnc.variables['polar_stereographic'].spatial_ref
-    map_crs = pyproj.CRS.from_string(wks_s)
-    # Debugging
-    # with open('crs.wkt', 'w') as fout:
-    #    fout.write(wks_s)
+    with netCDF4.Dataset(velocity_file) as vnc:
+        wks_s = vnc.variables['polar_stereographic'].spatial_ref
+        map_crs = pyproj.CRS.from_string(wks_s)
+        # Debugging
+        # with open('crs.wkt', 'w') as fout:
+        #    fout.write(wks_s)
 
-    # Standard GeoJSON Coordinate Reference System (CRS)
-    # Same as epsg:4326, but the urn: string is preferred
-    # http://wiki.geojson.org/Rethinking_CRS
-    # This CRS is lat/lon, whereas GeoJSON is lon/lat.  Use always_xy to fix that (below)
-    geojson_crs = pyproj.CRS.from_string('urn:ogc:def:crs:OGC::CRS84')
-    # geojson_crs = pyproj.CRS.from_epsg(4326)
+        # Standard GeoJSON Coordinate Reference System (CRS)
+        # Same as epsg:4326, but the urn: string is preferred
+        # http://wiki.geojson.org/Rethinking_CRS
+        # This CRS is lat/lon, whereas GeoJSON is lon/lat.  Use always_xy to fix that (below)
+        geojson_crs = pyproj.CRS.from_string('urn:ogc:def:crs:OGC::CRS84')
+        # geojson_crs = pyproj.CRS.from_epsg(4326)
 
-    # https://pyproj4.github.io/pyproj/dev/examples.html
-    # Note that crs_4326 has the latitude (north) axis first
+        # https://pyproj4.github.io/pyproj/dev/examples.html
+        # Note that crs_4326 has the latitude (north) axis first
 
-    # Converts from geojson_crs to map_crs
-    # See for always_xy: https://proj.org/faq.html#why-is-the-axis-ordering-in-proj-not-consistent
-    proj = pyproj.Transformer.from_crs(geojson_crs, map_crs, always_xy=True)
+        # Converts from geojson_crs to map_crs
+        # See for always_xy: https://proj.org/faq.html#why-is-the-axis-ordering-in-proj-not-consistent
+        proj = pyproj.Transformer.from_crs(geojson_crs, map_crs, always_xy=True)
 
-    return proj
+        return proj
 
 def iter_traces(trace_files, proj):
     """proj:
@@ -80,14 +77,42 @@ def iter_traces(trace_files, proj):
 class VelocitySeries(object):
     """Yields timeseries of which velocity fiels to use for a starting and ending date"""
 
-    def __init__(self, vnc):
+    def __init__(self, velocity_file):
         """vnc: netCDF4.Dataset
             velocity file, opened
         """
-        times_num = vnc.variables['time'][:]
-    #    dates = cftime.num2date(times_num, vnc.variables['time'].units)
-        cfdates = netCDF4.num2date(times_num, vnc.variables['time'].units)
-        self.dates = [datetime.date(x.year, x.month, x.day) for x in cfdates]
+        with netCDF4.Dataset(velocity_file) as vnc:
+            nctime = nc.variables['time']
+            sunits = nctime.units
+            times_d = vnc.variables['time'][:]    # "days since <refdate>
+
+            # Convert to "seconds since <refdate>"
+            time_units = cf_units.Unit(nctime.units, nctime.calendar)
+            self.units_s = cfutil.replace_reftime_unit(time_units, 'seconds')
+            self.times_s = [time_units.convert(t_d, self.units_s) for t_d in times_d]
+
+    def __call__(self, t0_s, t1_s):
+        """Iterator of a series of velocity fields for a given date range"""
+        # Find starting interval
+        time_index = bisect.bisect_right(self.times_s,t0_s)-1
+        while self.dates[time_index] <= dt1:
+            yield max(t0_s,self.times_s[time_index]), min(t1_s,self.times_s[time_index+1]), time_index
+            time_index += 1
+
+class VelocitySeries(object):
+    """Yields timeseries of which velocity fiels to use for a starting and ending date"""
+
+    def __init__(self, velocity_file):
+        """vnc: netCDF4.Dataset
+            velocity file, opened
+        """
+        with netCDF4.Dataset(velocity_file) as vnc:
+            #self.time_units = cf_units.Unit(nctime.units, nctime.calendar)
+            times_start_d = vnc.variables['time_bnds'][:,0]    #  double time_bnds(time, bnds=2)
+            cfdates = netCDF4.num2date(times_start_d, vnc.variables['time'].units)
+            self.dates = [datetime.date(x.year, x.month, x.day) for x in cfdates]
+
+
 
     def __call__(self, dt0, dt1):
         """Iterator of a series of velocity fields for a given date range"""
@@ -239,46 +264,41 @@ class IceRemover(object):
 
 
 def main():
+    trace_file = 'Amaral_TerminusTraces/TemporalSet/Jakobshavn/Jakobshavn10_2015-08-01_2015-08-23.geojson.json'
+    velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
+    bedmachine_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W69.10N.nc'
+
     remover = IceRemover(bedmachine_file)
-    with netCDF4.Dataset(velocity_file, 'r') as vnc:
+    vseries = VelocitySeries(velocity_file)
 
-        # Compu
-        vseries = VelocitySeries(vnc)
+    proj = geojson_converter(velocity_file)
+    iter = iter_traces((trace_file,), proj)
+    for dt0,trace0 in iter:
+        dt1,trace1 = next(iter)
 
-        iter = iter_traces((trace_file,))
-        for dt0,trace0 in iter:
-            dt1,trace1 = next(iter)
+        t0_s = vseries.units_s.date2num(dt0)
+        t1_s = vseries.units_s.date2num(dt1)
 
-            # Get ice thickness, adjusted for the present grounding line
-            thk = remover.thk(trace0)
+        # Get ice thickness, adjusted for the present grounding line
+        thk = remover.thk(trace0)
+
+        # Open file for PISM retreat
+        output_file = os.path.splitext(trace_file)[0] + '_retreat.nc'
+        try:
+            output = PISM.util.prepare_output(output_file, append_time=False)
 
             # Iterate through portions of (dt0,dt1) with constant velocities
-            for dti0,dti1,itime in vseries(dt0,dt1):
-                uu = vnc.variables['u_ssa_bc'][itime,:,:]
-                vv = vnc.variables['v_ssa_bc'][itime,:,:]
+            for itime,t0i_s,t1i_s in vseries(t0_s,t1_s):
+                ice_velocity.read(velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
 
+                front_evolution(geometry, ice_velocity,
+                    run_length = dt1_s - dt0_s,
+                    output=output)
+        finally:
+            output.close()
 
+            # Add dummy var to output_file; helps ncview
+            with netCDF4.Dataset(output_file, 'a') as nc:
+                nc.createVariable('dummy', 'i', ('x',))
 
-
-
-
-
-        print('------------- Trace for ', dt0, dt1)
-        for dt0i,dt1i,ix in vseries(dt0,dt1):
-            print('    {} {} {} (full range {} - {})'.format(dt0i,dt1i,ix,vseries.dates[ix],vseries.dates[ix+1]))
-
-
-
-#    print(date, len(trace))
-
-sys.exit(0)
-
-for feature in iter_features((trace_file,)):
-    # ['geometry', 'id', 'properties', 'type']
-    assert feature['geometry']['type'] == 'LineString'
-    points = feature['geometry']['coordinates']
-    sdate = feature['properties']['date']
-    date = datetime.datetime.fromisoformat(sdate).date()
-    print(type(date),date)
-    print(sdate, len(points))
-#    print(points)
+main()
