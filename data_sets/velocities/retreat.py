@@ -250,7 +250,7 @@ class compute(object):
     default_kwargs = dict(calving0.FrontEvolution.default_kwargs.items())
     default_kwargs['min_ice_thickness'] = 50.0
 
-    def __init__(self, makefile, geometry_file, velocity_file, trace_file, output_file, **kwargs0):
+    def __init__(self, makefile, geometry_file, velocity_file, trace_files, output_file, **kwargs0):
         """kwargs0:
             See default_kwargs above
         """
@@ -260,23 +260,23 @@ class compute(object):
         print('geometry_file = {}'.format(self.geometry_file))
         self.velocity_file = velocity_file
         print('velocity_file = {}'.format(self.velocity_file))
-        self.trace_file = trace_file
-        print('trace_file = {}'.format(self.trace_file))
+        self.trace_files = trace_files
+#        print('trace_file = {}'.format(self.trace_file))
 
         self.rule = makefile.add(self.run,
-            (geometry_file, velocity_file, trace_file),
+            [geometry_file, velocity_file] + list(trace_files),
             (output_file,))
 
     def run(self):
+        proj = geojson_converter(self.velocity_file)
         remover = IceRemover(self.geometry_file)
         vseries = VelocitySeries(self.velocity_file)
 
-        proj = geojson_converter(self.velocity_file)
-        iter = iter_traces((self.trace_file,), proj)
+        iter = iter_traces(self.trace_files, proj)
         for dt0,trace0 in iter:
             dt1,trace1 = next(iter)
-
-            print('dt0', dt0, type(dt0))
+            print('============ Running {} - {}'.format(dt0,dt1))
+           
             dtt0 = datetime.datetime(dt0.year,dt0.month,dt0.day)
             dtt1 = datetime.datetime(dt1.year,dt1.month,dt1.day)
             t0_s = vseries.units_s.date2num(dtt0)
@@ -286,9 +286,20 @@ class compute(object):
             thk = remover.get_thk(trace0)
 
             # Open file for PISM retreat
-            output_file = os.path.splitext(self.trace_file)[0] + '_retreat.nc'
+#            output_file = os.path.splitext(self.trace_file)[0] + '_retreat.nc'
+            output_file = self.rule.outputs[0]
+
+            # Create the output file with correct time units
+#            try:
+#                output = PISM.util.prepare_output(output_file, append_time=False)
+#            finally:
+#                output.close()
+            with netCDF4.Dataset(output_file, 'a') as nc:
+                nc.variables['time'].units = vseries.units_s.format()
+            return
+
             try:
-                output = PISM.util.prepare_output(output_file, append_time=False)
+                output = PISM.util.prepare_output(output_file, append_time=True)
 
                 #### I need to mimic this: Ross_combined.nc plus the script that made it
                 # Script in the main PISM repo, it's in examples/ross/preprocess.py
@@ -329,7 +340,25 @@ def main():
     geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W69.10N.nc'
     velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
     trace_file = 'Amaral_TerminusTraces/TemporalSet/Jakobshavn/Jakobshavn10_2015-08-01_2015-08-23.geojson.json'
+    trace_files = [
+        os.path.join('Amaral_TerminusTraces/TemporalSet/Jakobshavn',x) for x in (
+        'Jakobshavn1_2010-08-01_2010-10-04.geojson.json',
+        'Jakobshavn2_2011-02-01_2011-04-07.geojson.json',
+        'Jakobshavn3_2011-03-15_2011-04-23.geojson.json',
+        'Jakobshavn4_2011-09-01_2011-09-30.geojson.json',
+        'Jakobshavn5_2013-01-01_2013-03-27.geojson.json',
+        'Jakobshavn6_2013-07-15_2013-09-18.geojson.json',
+        'Jakobshavn7_2013-08-25_2013-10-20.geojson.json',
+        'Jakobshavn8_2014-05-15_2014-06-24.geojson.json',
+        'Jakobshavn9_2015-06-10_2015-07-06.geojson.json',
+        'Jakobshavn10_2015-08-01_2015-08-23.geojson.json',
+        'Jakobshavn11_2016-03-01_2016-04-19.geojson.json',
+        'Jakobshavn12_2016-04-25_2016-05-15.geojson.json',
+        'Jakobshavn13_2016-05-15_2016-07-08.geojson.json',
+        'Jakobshavn14_2016-06-15_2016-07-17.geojson.json',
+        'Jakobshavn15_2017-06-15_2017-06-26.geojson.json',
+        )]
     compute(makefile,
-        geometry_file, velocity_file, trace_file, 'x.nc').run()
+        geometry_file, velocity_file, trace_files, 'x.nc').run()
 
 main()
