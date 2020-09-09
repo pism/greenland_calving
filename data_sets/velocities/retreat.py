@@ -13,9 +13,10 @@ import shapely.geometry
 from osgeo import ogr
 import shapely.ops
 import shapely.wkt, shapely.wkb
-from uafgi import ioutil,ncutil,cfutil
+from uafgi import ioutil,ncutil,cfutil,argutil,make
 import datetime
 import PISM
+from uafgi.pism import calving0
 
 def iter_features(trace_files):
     for trace_file in trace_files:
@@ -98,7 +99,7 @@ class VelocitySeries(object):
         # Find starting interval
         time_index = bisect.bisect_right(self.times_s,t0_s)-1
         while self.times_s[time_index] <= t1_s:
-            yield max(t0_s,self.times_s[time_index]), min(t1_s,self.times_s[time_index+1]), time_index
+            yield time_index,max(t0_s,self.times_s[time_index]), min(t1_s,self.times_s[time_index+1])
             time_index += 1
 
 
@@ -244,65 +245,91 @@ class IceRemover(object):
 
 
 
+class compute(object):
+
+    default_kwargs = dict(calving0.FrontEvolution.default_kwargs.items())
+    default_kwargs['min_ice_thickness'] = 50.0
+
+    def __init__(self, makefile, geometry_file, velocity_file, trace_file, output_file, **kwargs0):
+        """kwargs0:
+            See default_kwargs above
+        """
+        self.kwargs = argutil.select_kwargs(kwargs0, self.default_kwargs)
+
+        self.geometry_file = geometry_file
+        print('geometry_file = {}'.format(self.geometry_file))
+        self.velocity_file = velocity_file
+        print('velocity_file = {}'.format(self.velocity_file))
+        self.trace_file = trace_file
+        print('trace_file = {}'.format(self.trace_file))
+
+        self.rule = makefile.add(self.run,
+            (geometry_file, velocity_file, trace_file),
+            (output_file,))
+
+    def run(self):
+        remover = IceRemover(self.geometry_file)
+        vseries = VelocitySeries(self.velocity_file)
+
+        proj = geojson_converter(self.velocity_file)
+        iter = iter_traces((self.trace_file,), proj)
+        for dt0,trace0 in iter:
+            dt1,trace1 = next(iter)
+
+            print('dt0', dt0, type(dt0))
+            dtt0 = datetime.datetime(dt0.year,dt0.month,dt0.day)
+            dtt1 = datetime.datetime(dt1.year,dt1.month,dt1.day)
+            t0_s = vseries.units_s.date2num(dtt0)
+            t1_s = vseries.units_s.date2num(dtt1)
+
+            # Get ice thickness, adjusted for the present grounding line
+            thk = remover.get_thk(trace0)
+
+            # Open file for PISM retreat
+            output_file = os.path.splitext(self.trace_file)[0] + '_retreat.nc'
+            try:
+                output = PISM.util.prepare_output(output_file, append_time=False)
+
+                #### I need to mimic this: Ross_combined.nc plus the script that made it
+                # Script in the main PISM repo, it's in examples/ross/preprocess.py
+                #self.geometry_file = "~/github/pism/pism/examples/ross/Ross_combined.nc"
+                # self.geometry_file = "Ross_combined.nc"
+                ctx = PISM.Context()
+                # TODO: Shouldn't this go in calving0.init_geometry()?
+                ctx.config.set_number("geometry.ice_free_thickness_standard", self.kwargs['min_ice_thickness'])
+
+                grid = calving0.create_grid(ctx.ctx, self.geometry_file, "thickness")
+                geometry = calving0.init_geometry(grid, self.geometry_file, self.kwargs['min_ice_thickness'])
+                ice_velocity = calving0.init_velocity(grid, self.velocity_file)
+
+                # NB: here I use a low value of sigma_max to make it more
+                # interesting.
+                # default_kwargs = dict(
+                #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
+                fe_kwargs = dict()
+                front_evolution = calving0.FrontEvolution(grid, **fe_kwargs)
+            
+
+                # Iterate through portions of (dt0,dt1) with constant velocities
+                for itime,t0i_s,t1i_s in vseries(t0_s,t1_s):
+                    ice_velocity.read(self.velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
+
+                    front_evolution(geometry, ice_velocity,
+                        run_length = t1_s - t0_s,
+                        output=output)
+            finally:
+                output.close()
+
+    #            # Add dummy var to output_file; helps ncview
+    #            with netCDF4.Dataset(output_file, 'a') as nc:
+    #                nc.createVariable('dummy', 'i', ('x',))
+
 def main():
-    trace_file = 'Amaral_TerminusTraces/TemporalSet/Jakobshavn/Jakobshavn10_2015-08-01_2015-08-23.geojson.json'
-    velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
+    makefile = make.Makefile()
     geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W69.10N.nc'
-
-    remover = IceRemover(geometry_file)
-    vseries = VelocitySeries(velocity_file)
-
-    proj = geojson_converter(velocity_file)
-    iter = iter_traces((trace_file,), proj)
-    for dt0,trace0 in iter:
-        dt1,trace1 = next(iter)
-
-        print('dt0', dt0, type(dt0))
-        dtt0 = datetime.datetime(dt0.year,dt0.month,dt0.day)
-        dtt1 = datetime.datetime(dt1.year,dt1.month,dt1.day)
-        t0_s = vseries.units_s.date2num(dtt0)
-        t1_s = vseries.units_s.date2num(dtt1)
-
-        # Get ice thickness, adjusted for the present grounding line
-        thk = remover.get_thk(trace0)
-
-        # Open file for PISM retreat
-        output_file = os.path.splitext(trace_file)[0] + '_retreat.nc'
-        try:
-            output = PISM.util.prepare_output(output_file, append_time=False)
-
-            #### I need to mimic this: Ross_combined.nc plus the script that made it
-            # Script in the main PISM repo, it's in examples/ross/preprocess.py
-            #geometry_file = "~/github/pism/pism/examples/ross/Ross_combined.nc"
-            # self.geometry_file = "Ross_combined.nc"
-            ctx = PISM.Context()
-            # TODO: Shouldn't this go in calving0.init_geometry()?
-            ctx.config.set_number("geometry.ice_free_thickness_standard", self.kwargs['min_ice_thickness'])
-
-            grid = calving0.create_grid(ctx.ctx, self.geometry_file, "thickness")
-            geometry = calving0.init_geometry(grid, self.geometry_file, self.kwargs['min_ice_thickness'])
-            ice_velocity = calving0.init_velocity(grid, self.velocity_file)
-
-            # NB: here I use a low value of sigma_max to make it more
-            # interesting.
-            # default_kwargs = dict(
-            #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
-            fe_kwargs = dict()
-            front_evolution = calving0.FrontEvolution(grid, **fe_kwargs)
-        
-
-            # Iterate through portions of (dt0,dt1) with constant velocities
-            for itime,t0i_s,t1i_s in vseries(t0_s,t1_s):
-                ice_velocity.read(velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
-
-                front_evolution(geometry, ice_velocity,
-                    run_length = dt1_s - dt0_s,
-                    output=output)
-        finally:
-            output.close()
-
-#            # Add dummy var to output_file; helps ncview
-#            with netCDF4.Dataset(output_file, 'a') as nc:
-#                nc.createVariable('dummy', 'i', ('x',))
+    velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
+    trace_file = 'Amaral_TerminusTraces/TemporalSet/Jakobshavn/Jakobshavn10_2015-08-01_2015-08-23.geojson.json'
+    compute(makefile,
+        geometry_file, velocity_file, trace_file, 'x.nc').run()
 
 main()
