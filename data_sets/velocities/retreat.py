@@ -1,3 +1,4 @@
+import cf_units
 import bisect
 import sys,os,subprocess
 import numpy as np
@@ -12,8 +13,9 @@ import shapely.geometry
 from osgeo import ogr
 import shapely.ops
 import shapely.wkt, shapely.wkb
-from uafgi import ioutil,ncutil
+from uafgi import ioutil,ncutil,cfutil
 import datetime
+import PISM
 
 def iter_features(trace_files):
     for trace_file in trace_files:
@@ -82,7 +84,7 @@ class VelocitySeries(object):
             velocity file, opened
         """
         with netCDF4.Dataset(velocity_file) as vnc:
-            nctime = nc.variables['time']
+            nctime = vnc.variables['time']
             sunits = nctime.units
             times_d = vnc.variables['time'][:]    # "days since <refdate>
 
@@ -95,39 +97,17 @@ class VelocitySeries(object):
         """Iterator of a series of velocity fields for a given date range"""
         # Find starting interval
         time_index = bisect.bisect_right(self.times_s,t0_s)-1
-        while self.dates[time_index] <= dt1:
+        while self.times_s[time_index] <= t1_s:
             yield max(t0_s,self.times_s[time_index]), min(t1_s,self.times_s[time_index+1]), time_index
             time_index += 1
 
-class VelocitySeries(object):
-    """Yields timeseries of which velocity fiels to use for a starting and ending date"""
-
-    def __init__(self, velocity_file):
-        """vnc: netCDF4.Dataset
-            velocity file, opened
-        """
-        with netCDF4.Dataset(velocity_file) as vnc:
-            #self.time_units = cf_units.Unit(nctime.units, nctime.calendar)
-            times_start_d = vnc.variables['time_bnds'][:,0]    #  double time_bnds(time, bnds=2)
-            cfdates = netCDF4.num2date(times_start_d, vnc.variables['time'].units)
-            self.dates = [datetime.date(x.year, x.month, x.day) for x in cfdates]
-
-
-
-    def __call__(self, dt0, dt1):
-        """Iterator of a series of velocity fields for a given date range"""
-        # Find starting interval
-        time_index = bisect.bisect_right(self.dates,dt0)-1
-        print('ti {} ({} -- {})'.format(time_index, self.dates[time_index],self.dates[time_index+1]))
-        while self.dates[time_index] <= dt1:
-            yield max(dt0,self.dates[time_index]), min(dt1,self.dates[time_index+1]), time_index
-            time_index += 1
 
 class IceRemover(object):
 
     def __init__(self, bedmachine_file):
         """bedmachine-file: Local extract from global BedMachine"""
-        with netCDF4.Dataset(bedmachine_file) as nc:
+        self.bedmachine_file = bedmachine_file
+        with netCDF4.Dataset(self.bedmachine_file) as nc:
 
             bounding_xx = nc.variables['x'][:]
             bounding_yy = nc.variables['y'][:]
@@ -152,7 +132,7 @@ class IceRemover(object):
             self.bed = nc.variables['bed'][:]
 
 
-    def thk(trace0):
+    def get_thk(self, trace0):
         """Yields an ice thickness field that's been cut off at the terminus trace0
         trace0: (gline_xx,gline_yy)
             output of iter_traces()
@@ -164,7 +144,8 @@ class IceRemover(object):
             (trace0[0][i], trace0[1][i]) for i in range(len(trace0[0]))])
 
         # Get least squares fit through the points
-        slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(gline0[0], gline0[1])
+#        slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(gline0[0], gline0[1])
+        slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(trace0[0], trace0[1])
 
         regline = shapely.geometry.LineString((
             (self.x0, slope*self.x0 + intercept),
@@ -178,7 +159,7 @@ class IceRemover(object):
 
         # -------------- Extend gline LineString with our intersection points
         intersection_ep = intersection.boundary
-        gline_ep = gline.boundary
+        gline_ep = gline0.boundary
         # Make sure intersection[0] is closets to gline[0]
         if intersection_ep[0].distance(gline_ep[0]) > intersection_ep[0].distance(gline_ep[1]):
             intersection_ep = (intersection_ep[1],intersection_ep[0])
@@ -187,7 +168,7 @@ class IceRemover(object):
         #print(list(intersection_ep[0].coords))
         print(intersection_ep[0].coords[0])
         glinex = shapely.geometry.LineString(
-            [intersection_ep[0].coords[0]] + list(gline.coords) + [intersection_ep[1].coords[0]])
+            [intersection_ep[0].coords[0]] + list(gline0.coords) + [intersection_ep[1].coords[0]])
 
         # Split our bounding_box polygon based on glinex
         # https://gis.stackexchange.com/questions/232771/splitting-polygon-by-linestring-in-geodjango
@@ -232,7 +213,7 @@ class IceRemover(object):
             # Mask out based on that polygon
             bed_masked_fname = os.path.join(tmp, 'bed_masked.nc')
         #    bed_masked_fname = 'x.nc'
-            cmd =  ('gdalwarp', '-cutline', poly_fname, 'NETCDF:{}:bed'.format(bedmachine_file), bed_masked_fname)
+            cmd =  ('gdalwarp', '-cutline', poly_fname, 'NETCDF:{}:bed'.format(self.bedmachine_file), bed_masked_fname)
             subprocess.run(cmd)
 
             # Read bed_maksed
@@ -245,7 +226,7 @@ class IceRemover(object):
             bmask = bmask_false
 
         # Remove downstream ice
-        thk = np.zeros(self.tnk.shape)
+        thk = np.zeros(self.thk.shape)
         thk[np.logical_and(bmask, self.bed<-100)] = 0
 
         return thk
@@ -266,9 +247,9 @@ class IceRemover(object):
 def main():
     trace_file = 'Amaral_TerminusTraces/TemporalSet/Jakobshavn/Jakobshavn10_2015-08-01_2015-08-23.geojson.json'
     velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
-    bedmachine_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W69.10N.nc'
+    geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W69.10N.nc'
 
-    remover = IceRemover(bedmachine_file)
+    remover = IceRemover(geometry_file)
     vseries = VelocitySeries(velocity_file)
 
     proj = geojson_converter(velocity_file)
@@ -276,16 +257,39 @@ def main():
     for dt0,trace0 in iter:
         dt1,trace1 = next(iter)
 
-        t0_s = vseries.units_s.date2num(dt0)
-        t1_s = vseries.units_s.date2num(dt1)
+        print('dt0', dt0, type(dt0))
+        dtt0 = datetime.datetime(dt0.year,dt0.month,dt0.day)
+        dtt1 = datetime.datetime(dt1.year,dt1.month,dt1.day)
+        t0_s = vseries.units_s.date2num(dtt0)
+        t1_s = vseries.units_s.date2num(dtt1)
 
         # Get ice thickness, adjusted for the present grounding line
-        thk = remover.thk(trace0)
+        thk = remover.get_thk(trace0)
 
         # Open file for PISM retreat
         output_file = os.path.splitext(trace_file)[0] + '_retreat.nc'
         try:
             output = PISM.util.prepare_output(output_file, append_time=False)
+
+            #### I need to mimic this: Ross_combined.nc plus the script that made it
+            # Script in the main PISM repo, it's in examples/ross/preprocess.py
+            #geometry_file = "~/github/pism/pism/examples/ross/Ross_combined.nc"
+            # self.geometry_file = "Ross_combined.nc"
+            ctx = PISM.Context()
+            # TODO: Shouldn't this go in calving0.init_geometry()?
+            ctx.config.set_number("geometry.ice_free_thickness_standard", self.kwargs['min_ice_thickness'])
+
+            grid = calving0.create_grid(ctx.ctx, self.geometry_file, "thickness")
+            geometry = calving0.init_geometry(grid, self.geometry_file, self.kwargs['min_ice_thickness'])
+            ice_velocity = calving0.init_velocity(grid, self.velocity_file)
+
+            # NB: here I use a low value of sigma_max to make it more
+            # interesting.
+            # default_kwargs = dict(
+            #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
+            fe_kwargs = dict()
+            front_evolution = calving0.FrontEvolution(grid, **fe_kwargs)
+        
 
             # Iterate through portions of (dt0,dt1) with constant velocities
             for itime,t0i_s,t1i_s in vseries(t0_s,t1_s):
@@ -297,8 +301,8 @@ def main():
         finally:
             output.close()
 
-            # Add dummy var to output_file; helps ncview
-            with netCDF4.Dataset(output_file, 'a') as nc:
-                nc.createVariable('dummy', 'i', ('x',))
+#            # Add dummy var to output_file; helps ncview
+#            with netCDF4.Dataset(output_file, 'a') as nc:
+#                nc.createVariable('dummy', 'i', ('x',))
 
 main()
