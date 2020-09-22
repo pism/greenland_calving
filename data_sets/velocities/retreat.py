@@ -17,6 +17,8 @@ from uafgi import ioutil,ncutil,cfutil,argutil,make
 import datetime
 import PISM
 from uafgi.pism import calving0
+from uafgi.make import ncmake
+import subprocess
 
 def iter_features(trace_files):
     for trace_file in trace_files:
@@ -101,6 +103,26 @@ class VelocitySeries(object):
         while self.times_s[time_index] <= t1_s:
             yield time_index,max(t0_s,self.times_s[time_index]), min(t1_s,self.times_s[time_index+1])
             time_index += 1
+
+
+def replace_thk(bedmachine_file0, bedmachine_file1, thk):
+    """Copies bedmachine_file0 to bedmachine_file1, using thk in place of original 'thickness'
+    bedmachien_file0:
+        Name of original BedMachine file
+    bedmachine_file1:
+        Name of output BedMachine file
+    thk:
+        Replacement thickness field"""
+
+    with netCDF4.Dataset(bedmachine_file0, 'r') as nc0:
+        with netCDF4.Dataset(bedmachine_file1, 'w') as ncout:
+            cnc = ncutil.copy_nc(nc0, ncout)
+            vars = list(nc0.variables.keys())
+            cnc.define_vars(vars)
+            for var in vars:
+                if var not in {'thickness'}:
+                    cnc.copy_var(var)
+            ncout.variables['thickness'][:] = thk
 
 
 class IceRemover(object):
@@ -228,7 +250,10 @@ class IceRemover(object):
 
         # Remove downstream ice
         thk = np.zeros(self.thk.shape)
+        thk[:] = self.thk[:]
         thk[np.logical_and(bmask, self.bed<-100)] = 0
+
+#        thk *= 0.5
 
         return thk
 
@@ -250,7 +275,7 @@ class compute(object):
     default_kwargs = dict(calving0.FrontEvolution.default_kwargs.items())
     default_kwargs['min_ice_thickness'] = 50.0
 
-    def __init__(self, makefile, geometry_file, velocity_file, trace_files, output_file, **kwargs0):
+    def __init__(self, makefile, geometry_file, velocity_file, trace_files, output_dir, **kwargs0):
         """kwargs0:
             See default_kwargs above
         """
@@ -263,17 +288,26 @@ class compute(object):
         self.trace_files = trace_files
 #        print('trace_file = {}'.format(self.trace_file))
 
+        self.output_files = list()
+        for trace_file in self.trace_files:
+            output_file = make.opath(trace_file, output_dir, '')
+            output_file = output_file.replace('.geojson.json','_retreat.nc')
+            self.output_files.append(output_file)
+
         self.rule = makefile.add(self.run,
             [geometry_file, velocity_file] + list(trace_files),
-            (output_file,))
+            self.output_files)
 
     def run(self):
         proj = geojson_converter(self.velocity_file)
         remover = IceRemover(self.geometry_file)
         vseries = VelocitySeries(self.velocity_file)
 
-        iter = iter_traces(self.trace_files, proj)
-        for dt0,trace0 in iter:
+        for trace_file,output_file4 in zip(self.trace_files, self.output_files):
+            output_file3 = output_file4 + '3'    # .nc3
+
+            iter = iter_traces((trace_file,), proj)
+            dt0,trace0 = next(iter)
             dt1,trace1 = next(iter)
             print('============ Running {} - {}'.format(dt0,dt1))
            
@@ -284,22 +318,12 @@ class compute(object):
 
             # Get ice thickness, adjusted for the present grounding line
             thk = remover.get_thk(trace0)
-
-            # Open file for PISM retreat
-#            output_file = os.path.splitext(self.trace_file)[0] + '_retreat.nc'
-            output_file = self.rule.outputs[0]
-
-            # Create the output file with correct time units
-#            try:
-#                output = PISM.util.prepare_output(output_file, append_time=False)
-#            finally:
-#                output.close()
-            with netCDF4.Dataset(output_file, 'a') as nc:
-                nc.variables['time'].units = vseries.units_s.format()
-            return
-
+#            print('********* thk sum: {}'.format(np.sum(np.sum(thk))))
+            # Create custom geometry_file (bedmachine_file)
+            geometry_file1 = output_file4[:-3] + '_bedmachine.nc'
+            replace_thk(self.geometry_file, geometry_file1, thk)
             try:
-                output = PISM.util.prepare_output(output_file, append_time=True)
+                output = PISM.util.prepare_output(output_file3, append_time=True)
 
                 #### I need to mimic this: Ross_combined.nc plus the script that made it
                 # Script in the main PISM repo, it's in examples/ross/preprocess.py
@@ -309,15 +333,15 @@ class compute(object):
                 # TODO: Shouldn't this go in calving0.init_geometry()?
                 ctx.config.set_number("geometry.ice_free_thickness_standard", self.kwargs['min_ice_thickness'])
 
-                grid = calving0.create_grid(ctx.ctx, self.geometry_file, "thickness")
-                geometry = calving0.init_geometry(grid, self.geometry_file, self.kwargs['min_ice_thickness'])
+                grid = calving0.create_grid(ctx.ctx, geometry_file1, "thickness")
+                geometry = calving0.init_geometry(grid, geometry_file1, self.kwargs['min_ice_thickness'])
                 ice_velocity = calving0.init_velocity(grid, self.velocity_file)
 
                 # NB: here I use a low value of sigma_max to make it more
                 # interesting.
                 # default_kwargs = dict(
                 #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
-                fe_kwargs = dict()
+                fe_kwargs = dict(sigma_max=0.1e6)
                 front_evolution = calving0.FrontEvolution(grid, **fe_kwargs)
             
 
@@ -331,6 +355,15 @@ class compute(object):
             finally:
                 output.close()
 
+
+            # Create the output file with correct time units
+            cmd = ['ncks', '-4', '-L', '1', '-O', output_file3, output_file4]
+            subprocess.run(cmd, check=True)
+            os.remove(output_file3)
+            with netCDF4.Dataset(output_file4, 'a') as nc:
+                nc.variables['time'].units = 'seconds since {:04d}-{:02d}-{:02d}'.format(dt0.year,dt0.month,dt0.day)
+
+
     #            # Add dummy var to output_file; helps ncview
     #            with netCDF4.Dataset(output_file, 'a') as nc:
     #                nc.createVariable('dummy', 'i', ('x',))
@@ -338,27 +371,32 @@ class compute(object):
 def main():
     makefile = make.Makefile()
     geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W69.10N.nc'
-    velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
+#    velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
+    velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled_fastice.nc'
+#    velocity_file = 'filled.nc'
     trace_file = 'Amaral_TerminusTraces/TemporalSet/Jakobshavn/Jakobshavn10_2015-08-01_2015-08-23.geojson.json'
     trace_files = [
         os.path.join('Amaral_TerminusTraces/TemporalSet/Jakobshavn',x) for x in (
-        'Jakobshavn1_2010-08-01_2010-10-04.geojson.json',
-        'Jakobshavn2_2011-02-01_2011-04-07.geojson.json',
-        'Jakobshavn3_2011-03-15_2011-04-23.geojson.json',
-        'Jakobshavn4_2011-09-01_2011-09-30.geojson.json',
-        'Jakobshavn5_2013-01-01_2013-03-27.geojson.json',
+#        'Jakobshavn1_2010-08-01_2010-10-04.geojson.json',
+#        'Jakobshavn2_2011-02-01_2011-04-07.geojson.json',
+#        'Jakobshavn3_2011-03-15_2011-04-23.geojson.json',
+#        'Jakobshavn4_2011-09-01_2011-09-30.geojson.json',
+#        'Jakobshavn5_2013-01-01_2013-03-27.geojson.json',
+
+
         'Jakobshavn6_2013-07-15_2013-09-18.geojson.json',
-        'Jakobshavn7_2013-08-25_2013-10-20.geojson.json',
-        'Jakobshavn8_2014-05-15_2014-06-24.geojson.json',
-        'Jakobshavn9_2015-06-10_2015-07-06.geojson.json',
-        'Jakobshavn10_2015-08-01_2015-08-23.geojson.json',
-        'Jakobshavn11_2016-03-01_2016-04-19.geojson.json',
-        'Jakobshavn12_2016-04-25_2016-05-15.geojson.json',
-        'Jakobshavn13_2016-05-15_2016-07-08.geojson.json',
-        'Jakobshavn14_2016-06-15_2016-07-17.geojson.json',
-        'Jakobshavn15_2017-06-15_2017-06-26.geojson.json',
+
+#        'Jakobshavn7_2013-08-25_2013-10-20.geojson.json',
+#        'Jakobshavn8_2014-05-15_2014-06-24.geojson.json',
+#        'Jakobshavn9_2015-06-10_2015-07-06.geojson.json',
+#        'Jakobshavn10_2015-08-01_2015-08-23.geojson.json',
+#        'Jakobshavn11_2016-03-01_2016-04-19.geojson.json',
+#        'Jakobshavn12_2016-04-25_2016-05-15.geojson.json',
+#        'Jakobshavn13_2016-05-15_2016-07-08.geojson.json',
+#        'Jakobshavn14_2016-06-15_2016-07-17.geojson.json',
+#        'Jakobshavn15_2017-06-15_2017-06-26.geojson.json',
         )]
     compute(makefile,
-        geometry_file, velocity_file, trace_files, 'x.nc').run()
+        geometry_file, velocity_file, trace_files, '.').run()
 
 main()
