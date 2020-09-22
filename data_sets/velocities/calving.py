@@ -60,7 +60,8 @@ def main():
 
         # Fill in
         rule = flowfill.fill_surface_flow_rule(makefile, velocity_file,
-            local_bedmachine_path, ODIR).rule
+            local_bedmachine_path, ODIR,
+            prior_weight=0.8).rule
         merged_filled_path = rule.outputs[0]
         outputs.append(merged_filled_path)
 
