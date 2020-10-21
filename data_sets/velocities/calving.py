@@ -5,7 +5,16 @@ from uafgi.nsidc import nsidc0481
 
 ODIR = 'outputs'
 BEDMACHINE_FILE = os.path.join('bedmachine', 'BedMachineGreenland-2017-09-20.nc')
-CALVING_OUTPUT = os.path.join(ODIR, 'calving.nc')
+#grid='W69.10N'
+#grid='W70.55N'
+grid='W71.65N'
+CALVING_OUTPUT = os.path.join(ODIR, '{}-calving.nc'.format(grid))
+
+front_centers_jis = {
+    'W69.10N' : None,    # Jakobshavn
+    'W70.55N' : ((160,135),),    # Store Glacier
+    'W71.65N' : ((473,113),),    # Rink Glacier
+}
 
 def main():
 
@@ -23,14 +32,15 @@ def main():
     # --------------------------------------------------------------
     # Create the internal Makefile
 
-    grid='W69.10N'
 
     # Merge the velocities into a single file
     if args.local:
-        velocity_file = os.path.join(ODIR, 'velocity', 'TSX_'+grid+'_2008_2020_pism_filled.nc')
+        velocity_file = os.path.join(ODIR, 'velocity', grid, 'TSX_'+grid+'_2008_2020_pism_filled_x.nc')
     else:
         filter_attrs=dict(source='TSX', grid=grid)
-        rule = glaciers.merge(makefile, 'data', nsidc0481.parse, os.path.join(ODIR, 'velocity'),
+        rule = glaciers.merge(makefile,
+            os.path.join('data', grid),
+            nsidc0481.parse, os.path.join(ODIR, 'velocity'),
             os.path.join(ODIR, '{source}_{grid}_2008_2020.nc'),
             ('vx','vy'),
 #            max_files=3,
@@ -58,22 +68,13 @@ def main():
         outputs.append(local_bedmachine_path)
 
 
-        # Fill in
+        # Fill in missing velocities
         rule = flowfill.fill_surface_flow_rule(makefile, velocity_file,
             local_bedmachine_path, ODIR,
-            prior_weight=0.8).rule
+            prior_weight=0.8, front_centers_ji=front_centers_jis.get(grid,None)).rule
         merged_filled_path = rule.outputs[0]
         outputs.append(merged_filled_path)
 
-
-#    # Fixup bedmachine file
-#    if args.local:
-#        bedmachine_file = os.path.join(ODIR, 'bedmachine', 'BedMachineGreenland-2017-09-20_pism.nc4')
-#    else:
-#        rule = bedmachine.fixup_pism(makefile, BEDMACHINE_FILE, os.path.join(ODIR, 'bedmachine'))
-#        bedmachine_file = rule.outputs[0]
-#        outputs.append(bedmachine_file)
-#
     # Compute calving based on velocity file
     rule = calving.compute(
         makefile, local_bedmachine_path, merged_filled_path,
@@ -84,7 +85,7 @@ def main():
 #        (velocity_file,('u_ssa_bc',)),
 #        CALVING_OUTPUT).rule
 
-#    outputs.extend(rule.outputs)
+    outputs.extend(rule.outputs)
 
 #    outputs = ['outputs/velocity/TSX_W69.10N_vy_merged.nc']
     # -------------------------------------------------------------

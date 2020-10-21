@@ -270,6 +270,12 @@ class IceRemover(object):
 
 
 
+class compute_notrace(object):
+
+    """Does retreat from original calving front, without trace files to
+    show actual calving front."""
+
+
 class compute(object):
 
     default_kwargs = dict(calving0.FrontEvolution.default_kwargs.items())
