@@ -13,12 +13,13 @@ import shapely.geometry
 from osgeo import ogr
 import shapely.ops
 import shapely.wkt, shapely.wkb
-from uafgi import ioutil,ncutil,cfutil,argutil,make
+from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil
 import datetime
 import PISM
 from uafgi.pism import calving0
 from uafgi.make import ncmake
 import subprocess
+import shapefile
 
 def iter_features(trace_files):
     for trace_file in trace_files:
@@ -37,7 +38,7 @@ def geojson_converter(velocity_file):
     coordinates derived from the velocity file.
 
     vnc: netCDF4.Dataset
-        velocity file, opened
+        velocity file (filename)
 
     """
     with netCDF4.Dataset(velocity_file) as vnc:
@@ -270,10 +271,143 @@ class IceRemover(object):
 
 
 
-class compute_notrace(object):
+def retreat_segment(dttraces, remover, vseries, geometry_file, output_file):
+    """Performs a retreat from one terminus to another.
+    dttraces: ((dt0,trace0), (dt1,trace1))
+        dt0/dt1 are datetime.date
+    remover: IceRemover
+        Allows correction of ice extent to terminus position
+    vseries: VelocitySeries
+        Provides velocity fields at appropriate times
+    geometry_file:
+        Provides bed depth and ice thickness (BedMachine)
+    output_file:
+        Name of netCDF4 file to create and write step-by-step output
+    """
+    (dt0,trace0), (dt1,trace1) = dttraces
 
-    """Does retreat from original calving front, without trace files to
-    show actual calving front."""
+    # Determine output directories and filenames
+    odir = os.path.split(output_file)[0]
+    geometry_file1 = output_file[:-3] + '_bedmachine.nc'    # Store bed used for this mini-run
+
+
+    # Convert trace dates to "seconds since..." format
+    dtt0 = datetime.datetime(dt0.year,dt0.month,dt0.day)
+    dtt1 = datetime.datetime(dt1.year,dt1.month,dt1.day)
+    t0_s = vseries.units_s.date2num(dtt0)
+    t1_s = vseries.units_s.date2num(dtt1)
+
+    with ioutil.tmp_dir(odir) as tdir:
+        # Get ice thickness, with extent adjusted for the present grounding line
+        # NOTE: This currently does NOT adjust ice thickness
+        thk = remover.get_thk(trace0)
+
+        # Create custom geometry_file (bedmachine_file)
+        replace_thk(geometry_file, geometry_file1, thk)
+
+        try:
+            # Create temporary output file
+            output = PISM.util.prepare_output(os.path.join(tdir, 'output.nc3'), append_time=True)
+
+            ctx = PISM.Context()
+            # TODO: Shouldn't this go in calving0.init_geometry()?
+            ctx.config.set_number("geometry.ice_free_thickness_standard", self.kwargs['min_ice_thickness'])
+
+            grid = calving0.create_grid(ctx.ctx, geometry_file1, "thickness")
+            geometry = calving0.init_geometry(grid, geometry_file1, self.kwargs['min_ice_thickness'])
+            ice_velocity = calving0.init_velocity(grid, self.velocity_file)
+
+            # NB: here I use a low value of sigma_max to make it more
+            # interesting.
+            # default_kwargs = dict(
+            #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
+            fe_kwargs = dict(sigma_max=0.1e6)
+            front_evolution = calving0.FrontEvolution(grid, **fe_kwargs)
+        
+
+            # Iterate through portions of (dt0,dt1) with constant velocities
+            for itime,t0i_s,t1i_s in vseries(t0_s,t1_s):
+                ice_velocity.read(self.velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
+
+                front_evolution(geometry, ice_velocity,
+                    run_length = t1_s - t0_s,
+                    output=output)
+        finally:
+            output.close()
+
+
+        # Create the output file with correct time units
+        cmd = ['ncks', '-4', '-L', '1', '-O', os.path.join(tdir, 'output.nc3'), output_file]
+        subprocess.run(cmd, check=True)
+        os.remove(output_file3)
+        with netCDF4.Dataset(output_file4, 'a') as nc:
+            nc.variables['time'].units = 'seconds since {:04d}-{:02d}-{:02d}'.format(dt0.year,dt0.month,dt0.day)
+
+def iterate_termini(termini_file, map_crs):
+    """Iterate through the terminus shapefiles from the CALFIN terminus dataset
+    yields: date, (gline_xx, gline_yy)
+        date: datetime.date
+            Date of terminus
+        gline_xx, gline_yy: [],[]
+            X and Y coordinates of the terminus
+    """
+
+    # The CRS associated with shapefile
+    with open(termini_file[:-4] + '.prj') as fin:
+        wks_s = next(fin)
+    termini_crs = pyproj.CRS.from_string(wks_s)
+#    print('termini_crs = {}'.format(termini_crs.to_proj4()))
+#    print('    map_crs = {}'.format(map_crs.to_proj4()))
+#    print('EQUAL: {}'.format(termini_crs.equals(map_crs)))
+
+    # Converts from termini_crs to map_crs
+    # See for always_xy: https://proj.org/faq.html#why-is-the-axis-ordering-in-proj-not-consistent
+    proj = pyproj.Transformer.from_crs(termini_crs, map_crs, always_xy=True)
+
+    for shape,attrs in geoutil.read_shapes(termini_file):
+        if shape.shapeType != shapefile.POLYLINE:
+            raise ValueError('POLYLINE shapeType expected in file {}'.format(fname))
+
+        gline_xx,gline_yy = proj.transform(
+            np.array([xy[0] for xy in shape.points]),
+            np.array([xy[1] for xy in shape.points]))
+
+        dt = datetime.datetime.strptime(attrs['Date'], '%Y-%m-%d').date()
+        print(attrs)
+        yield dt, (gline_xx, gline_yy)
+
+def main1():
+    termini_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_closed_v1.0.shp'
+    geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W71.65N.nc'
+
+    # The main CRS we are working in
+    with netCDF4.Dataset(geometry_file) as nc:
+        wks_s = nc.variables['polar_stereographic'].spatial_ref
+    map_crs = pyproj.CRS.from_string(wks_s)
+#    print('map_crs = {}'.format(map_crs))
+
+    iter = iterate_termini(termini_file, map_crs)
+    dt0,gline0 = next(iter)
+    for dt1, gline1 in iter:
+
+        # Skip to middle of file
+        if dt0 >= datetime.date(2014,6,15):
+
+            print(dt0,dt1)
+
+
+            if dt0 == dt1:
+                with shapefile.Writer('xx', shapefile.POLYLINE) as out:
+                    out.record(
+                break
+
+        # Incremeent loop
+        dt0 = dt1
+        gline0 = gline1
+
+
+main1()
+sys.exit(0)
 
 
 class compute(object):
