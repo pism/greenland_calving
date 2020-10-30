@@ -22,6 +22,7 @@ import subprocess
 import shapefile
 
 def iter_features(trace_files):
+    """Reads features out of a GeoJSON file"""
     for trace_file in trace_files:
         # https://stackoverflow.com/questions/42753745/how-can-i-parse-geojson-with-python
         with open(trace_file) as fin:
@@ -271,11 +272,77 @@ class IceRemover(object):
 
 
 
-def retreat_segment(dttraces, remover, vseries, geometry_file, output_file):
+
+
+class IceRemover2(object):
+
+    def __init__(self, bedmachine_file):
+        """bedmachine-file: Local extract from global BedMachine"""
+        self.bedmachine_file = bedmachine_file
+        with netCDF4.Dataset(self.bedmachine_file) as nc:
+
+            # ------- Read original thickness and bed
+            self.thk = nc.variables['thickness'][:]
+
+    def get_thk(self, termini_closed_file, index):
+        """Yields an ice thickness field that's been cut off at the terminus trace0
+        trace0: (gline_xx,gline_yy)
+            output of iter_traces()
+        """
+
+        with ioutil.tmp_dir(odir, tdir='tdir') as tdir:
+
+            # Select a single polygon out of the shapefile
+            one_terminus = os.path.join(tdir, 'one_terminus.shp')
+            cmd = ['ogr2ogr', one_terminus, termini_closed_file, '-fid', str(index)]
+            subprocess.run(cmd, check=True)
+
+            # Cut the bedmachine file based on the shape
+            cut_geometry_file = os.path.join(tdir, 'cut_geometry_file.nc')
+            cmd = ['gdalwarp', '-cutline', one_terminus, 'NETCDF:{}:bed'.format(geometry_file), cut_geometry_file]
+            subprocess.run(cmd, check=True)
+
+            # Read the fjord mask from that file
+            with netCDF4.Dataset(cut_geometry_file) as nc:
+                fjord = nc.variables['Band1'][:].mask
+
+            # Remove downstream ice
+            thk = np.zeros(self.thk.shape)
+            thk[:] = self.thk[:]
+            thk[fjord] = 0
+
+    #        thk *= 0.5
+
+            return thk
+
+            ## Store it...
+            #with netCDF4.Dataset(bedmachine_file, 'r') as nc0:
+            #    with netCDF4.Dataset('x.nc', 'w') as ncout:
+            #        cnc = ncutil.copy_nc(nc0, ncout)
+            #        vars = list(nc0.variables.keys())
+            #        cnc.define_vars(vars)
+            #        for var in vars:
+            #            if var not in {'thickness'}:
+            #                cnc.copy_var(var)
+            #        ncout.variables['thickness'][:] = thk
+
+
+
+
+
+
+
+
+
+
+def retreat_segment(termini_closed_file, dttraces, remover, vseries, geometry_file, output_file):
     """Performs a retreat from one terminus to another.
-    dttraces: ((dt0,trace0), (dt1,trace1))
-        dt0/dt1 are datetime.date
-    remover: IceRemover
+    termini_closed_file:
+        Shapefile specifying glacier termini (along with fjords)
+    dttraces: ((dt0,ix0), (dt1,ix1))
+        dt0/dt1: datetime.date
+        ix0/ix1: Index of terminus in the termini_closed_file 
+    remover: IceRemover2
         Allows correction of ice extent to terminus position
     vseries: VelocitySeries
         Provides velocity fields at appropriate times
@@ -284,7 +351,7 @@ def retreat_segment(dttraces, remover, vseries, geometry_file, output_file):
     output_file:
         Name of netCDF4 file to create and write step-by-step output
     """
-    (dt0,trace0), (dt1,trace1) = dttraces
+    (dt0,ix0), (dt1,ix1) = dttraces
 
     # Determine output directories and filenames
     odir = os.path.split(output_file)[0]
@@ -300,7 +367,7 @@ def retreat_segment(dttraces, remover, vseries, geometry_file, output_file):
     with ioutil.tmp_dir(odir) as tdir:
         # Get ice thickness, with extent adjusted for the present grounding line
         # NOTE: This currently does NOT adjust ice thickness
-        thk = remover.get_thk(trace0)
+        thk = remover.get_thk(termini_closed_file, ix0)
 
         # Create custom geometry_file (bedmachine_file)
         replace_thk(geometry_file, geometry_file1, thk)
@@ -365,8 +432,8 @@ def iterate_termini(termini_file, map_crs):
     proj = pyproj.Transformer.from_crs(termini_crs, map_crs, always_xy=True)
 
     for shape,attrs in geoutil.read_shapes(termini_file):
-        if shape.shapeType != shapefile.POLYLINE:
-            raise ValueError('POLYLINE shapeType expected in file {}'.format(fname))
+        if shape.shapeType != shapefile.POLYGON:
+            raise ValueError('shapefile.POLYGON shapeType expected in file {}'.format(termini_file))
 
         gline_xx,gline_yy = proj.transform(
             np.array([xy[0] for xy in shape.points]),
@@ -376,9 +443,40 @@ def iterate_termini(termini_file, map_crs):
         print(attrs)
         yield dt, (gline_xx, gline_yy)
 
+def fjord_mask(termini_closed_file, index, geometry_file, odir):
+    """Converts a closed polygon in a shapefile into
+    termini_closed_file:
+        Shapefile containing the closed terminus polygons.
+        One side of the polygon is the terminus; the rest is nearby parts of the fjord.
+    index:
+        Which polygon (stargin with 0) in the terminus shapefile to use.
+    odir:
+        Output directory.  Won't create any files, but WILL put temporary files here.
+    """
+
+    with ioutil.tmp_dir(odir, tdir='tdir') as tdir:
+
+        # Select a single polygon out of the shapefile
+        one_terminus = os.path.join(tdir, 'one_terminus.shp')
+        cmd = ['ogr2ogr', one_terminus, termini_closed_file, '-fid', str(index)]
+        subprocess.run(cmd, check=True)
+
+        # Cut the bedmachine file based on the shape
+        cut_geometry_file = os.path.join(tdir, 'cut_geometry_file.nc')
+        cmd = ['gdalwarp', '-cutline', one_terminus, 'NETCDF:{}:bed'.format(geometry_file), cut_geometry_file]
+        subprocess.run(cmd, check=True)
+
+        # Read the fjord mask from that file
+        with netCDF4.Dataset(cut_geometry_file) as nc:
+            fjord = nc.variables['Band1'][:].mask
+
+    return fjord
+
+
 def main1():
-    termini_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_closed_v1.0.shp'
+    termini_closed_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_closed_v1.0.shp'
     geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W71.65N.nc'
+    odir = 'outputs'
 
     # The main CRS we are working in
     with netCDF4.Dataset(geometry_file) as nc:
@@ -386,28 +484,43 @@ def main1():
     map_crs = pyproj.CRS.from_string(wks_s)
 #    print('map_crs = {}'.format(map_crs))
 
-    iter = iterate_termini(termini_file, map_crs)
-    dt0,gline0 = next(iter)
-    for dt1, gline1 in iter:
+    # Read attributes from the shapefile
+    remover = IceRemover2(geometry_file)
+    attrss = [attrs for _,attrs in geoutil.read_shapes(termini_closed_file)]
+    for ix in range(1,len(attrss)):
+        if ix < 34:
+            continue
 
-        # Skip to middle of file
-        if dt0 >= datetime.date(2014,6,15):
-
-            print(dt0,dt1)
-
-
-            if dt0 == dt1:
-                with shapefile.Writer('xx', shapefile.POLYLINE) as out:
-                    out.record(
-                break
-
-        # Incremeent loop
-        dt0 = dt1
-        gline0 = gline1
+        thk = remover.get_thk(termini_closed_file, ix)
 
 
-main1()
-sys.exit(0)
+
+        with ioutil.tmp_dir(odir, tdir='tdir') as tdir:
+
+            # Select a single polygon out of the shapefile
+            one_terminus = os.path.join(tdir, 'one_terminus.shp')
+            cmd = ['ogr2ogr', one_terminus, termini_file, '-fid', str(ix)]
+            subprocess.run(cmd, check=True)
+
+            # Cut the bedmachine file based on the shape
+            cut_geometry_file = os.path.join(tdir, 'cut_geometry_file.nc')
+            cmd = ['gdalwarp', '-cutline', one_terminus, 'NETCDF:{}:bed'.format(geometry_file), cut_geometry_file]
+            subprocess.run(cmd, check=True)
+
+            # Read the fjord mask from that file
+            with netCDF4.Dataset(cut_geometry_file) as nc:
+                bmask = nc.variables['Band1'][:].mask
+
+
+
+#            dt0 = datetime.datetime.strptime(attrs0['Date'], '%Y-%m-%d').date()
+
+            break
+
+
+
+#main1()
+#sys.exit(0)
 
 
 class compute(object):
@@ -415,9 +528,12 @@ class compute(object):
     default_kwargs = dict(calving0.FrontEvolution.default_kwargs.items())
     default_kwargs['min_ice_thickness'] = 50.0
 
-    def __init__(self, makefile, geometry_file, velocity_file, trace_files, output_dir, **kwargs0):
+    def __init__(self, makefile, geometry_file, velocity_file, termini_closed_file, otemplate, **kwargs0):
         """kwargs0:
             See default_kwargs above
+        otemplate:
+            Template used to construct output filenames, including directory
+            May include: {dt0}, {dt1}
         """
         self.kwargs = argutil.select_kwargs(kwargs0, self.default_kwargs)
 
@@ -425,36 +541,44 @@ class compute(object):
         print('geometry_file = {}'.format(self.geometry_file))
         self.velocity_file = velocity_file
         print('velocity_file = {}'.format(self.velocity_file))
-        self.trace_files = trace_files
+        self.termini_closed_file = termini_closed_file
 #        print('trace_file = {}'.format(self.trace_file))
 
+
+        # Determine terminus pairs
+        self.terminus_pairs = list()    # [ ((dt0,ix0), (dt1,ix1)) ]
+        attrss = enumerate(iter([attrs for _,attrs in geoutil.read_shapes(termini_closed_file)]))
         self.output_files = list()
-        for trace_file in self.trace_files:
-            output_file = make.opath(trace_file, output_dir, '')
-            output_file = output_file.replace('.geojson.json','_retreat.nc')
-            self.output_files.append(output_file)
+        ix0,attrs0 = next(attrss)
+        dt0 = datetime.datetime.strptime(attrs0['Date'], '%Y-%m-%d').date()
+        self.output_files = list()
+        for ix1,attrs1 in attrss:
+            dt1 = datetime.datetime.strptime(attrs1['Date'], '%Y-%m-%d').date()
+
+            if ix0 == 34:    # DEBUGGING: just one
+                self.terminus_pairs.append((ix0,dt0,ix1,dt1))
+                self.output_files.append(otemplate.format(dict(
+                    dt0=dt0, dt1=dt1)))
+
+            ix0,dt0 = ix1,dt1
 
         self.rule = makefile.add(self.run,
-            [geometry_file, velocity_file] + list(trace_files),
+            [geometry_file, velocity_file, termini_closed_file],
             self.output_files)
 
     def run(self):
         proj = geojson_converter(self.velocity_file)
-        remover = IceRemover(self.geometry_file)
+        remover = IceRemover2(self.geometry_file)
         vseries = VelocitySeries(self.velocity_file)
 
-        for trace_file,output_file4 in zip(self.trace_files, self.output_files):
+        for (ix0,dt0,ix1,dt1),output_file4 in zip(self.terminus_pairs, self.output_files):
             output_file3 = output_file4 + '3'    # .nc3
 
-            iter = iter_traces((trace_file,), proj)
-            dt0,trace0 = next(iter)
-            dt1,trace1 = next(iter)
             print('============ Running {} - {}'.format(dt0,dt1))
-           
-            dtt0 = datetime.datetime(dt0.year,dt0.month,dt0.day)
-            dtt1 = datetime.datetime(dt1.year,dt1.month,dt1.day)
-            t0_s = vseries.units_s.date2num(dtt0)
-            t1_s = vseries.units_s.date2num(dtt1)
+
+            # Convert to "seconds since..." units                       
+            t0_s = vseries.units_s.date2num(datetime.datetime(dt0.year,dt0.month,dt0.day))
+            t1_s = vseries.units_s.date2num(datetime.datetime(dt1.year,dt1.month,dt1.day))
 
             # Get ice thickness, adjusted for the present grounding line
             thk = remover.get_thk(trace0)
@@ -510,33 +634,12 @@ class compute(object):
 
 def main():
     makefile = make.Makefile()
-    geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W69.10N.nc'
-#    velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled.nc'
-    velocity_file = 'outputs/TSX_W69.10N_2008_2020_pism_filled_fastice.nc'
-#    velocity_file = 'filled.nc'
-    trace_file = 'Amaral_TerminusTraces/TemporalSet/Jakobshavn/Jakobshavn10_2015-08-01_2015-08-23.geojson.json'
-    trace_files = [
-        os.path.join('Amaral_TerminusTraces/TemporalSet/Jakobshavn',x) for x in (
-#        'Jakobshavn1_2010-08-01_2010-10-04.geojson.json',
-#        'Jakobshavn2_2011-02-01_2011-04-07.geojson.json',
-#        'Jakobshavn3_2011-03-15_2011-04-23.geojson.json',
-#        'Jakobshavn4_2011-09-01_2011-09-30.geojson.json',
-#        'Jakobshavn5_2013-01-01_2013-03-27.geojson.json',
+    geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W71.65N.nc'
+    velocity_file = 'outputs/TSX_W71.65N_2008_2020_pism_filled.nc'
+    termini_closed_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_closed_v1.0.shp'
+    otemplate = 'outputs/retreat_calfin_W71.65N_{dt0}_{dt1}.nc'
 
-
-        'Jakobshavn6_2013-07-15_2013-09-18.geojson.json',
-
-#        'Jakobshavn7_2013-08-25_2013-10-20.geojson.json',
-#        'Jakobshavn8_2014-05-15_2014-06-24.geojson.json',
-#        'Jakobshavn9_2015-06-10_2015-07-06.geojson.json',
-#        'Jakobshavn10_2015-08-01_2015-08-23.geojson.json',
-#        'Jakobshavn11_2016-03-01_2016-04-19.geojson.json',
-#        'Jakobshavn12_2016-04-25_2016-05-15.geojson.json',
-#        'Jakobshavn13_2016-05-15_2016-07-08.geojson.json',
-#        'Jakobshavn14_2016-06-15_2016-07-17.geojson.json',
-#        'Jakobshavn15_2017-06-15_2017-06-26.geojson.json',
-        )]
     compute(makefile,
-        geometry_file, velocity_file, trace_files, '.').run()
+        geometry_file, velocity_file, termini_closed_file, '.').run()
 
 main()
