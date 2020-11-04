@@ -284,14 +284,14 @@ class IceRemover2(object):
             # ------- Read original thickness and bed
             self.thk = nc.variables['thickness'][:]
 
-    def get_thk(self, termini_closed_file, index):
+    def get_thk(self, termini_closed_file, index, odir):
         """Yields an ice thickness field that's been cut off at the terminus trace0
         trace0: (gline_xx,gline_yy)
             output of iter_traces()
         """
 
         with ioutil.tmp_dir(odir, tdir='tdir') as tdir:
-
+#        if True:
             # Select a single polygon out of the shapefile
             one_terminus = os.path.join(tdir, 'one_terminus.shp')
             cmd = ['ogr2ogr', one_terminus, termini_closed_file, '-fid', str(index)]
@@ -299,17 +299,22 @@ class IceRemover2(object):
 
             # Cut the bedmachine file based on the shape
             cut_geometry_file = os.path.join(tdir, 'cut_geometry_file.nc')
-            cmd = ['gdalwarp', '-cutline', one_terminus, 'NETCDF:{}:bed'.format(geometry_file), cut_geometry_file]
+            cmd = ['gdalwarp', '-cutline', one_terminus, 'NETCDF:{}:bed'.format(self.bedmachine_file), cut_geometry_file]
             subprocess.run(cmd, check=True)
 
             # Read the fjord mask from that file
             with netCDF4.Dataset(cut_geometry_file) as nc:
-                fjord = nc.variables['Band1'][:].mask
+                fjord = np.logical_not(nc.variables['Band1'][:].mask)
+            print('fjord sum: {} {}'.format(np.sum(np.sum(fjord)), fjord.shape[0]*fjord.shape[1]))
+
 
             # Remove downstream ice
             thk = np.zeros(self.thk.shape)
             thk[:] = self.thk[:]
-            thk[fjord] = 0
+            print('thk sum1: {}'.format(np.sum(np.sum(self.thk))))
+            print('thk sum2: {}'.format(np.sum(np.sum(thk))))
+            thk[fjord] = -100
+            print('thk sum3: {}'.format(np.sum(np.sum(thk))))
 
     #        thk *= 0.5
 
@@ -334,81 +339,6 @@ class IceRemover2(object):
 
 
 
-
-def retreat_segment(termini_closed_file, dttraces, remover, vseries, geometry_file, output_file):
-    """Performs a retreat from one terminus to another.
-    termini_closed_file:
-        Shapefile specifying glacier termini (along with fjords)
-    dttraces: ((dt0,ix0), (dt1,ix1))
-        dt0/dt1: datetime.date
-        ix0/ix1: Index of terminus in the termini_closed_file 
-    remover: IceRemover2
-        Allows correction of ice extent to terminus position
-    vseries: VelocitySeries
-        Provides velocity fields at appropriate times
-    geometry_file:
-        Provides bed depth and ice thickness (BedMachine)
-    output_file:
-        Name of netCDF4 file to create and write step-by-step output
-    """
-    (dt0,ix0), (dt1,ix1) = dttraces
-
-    # Determine output directories and filenames
-    odir = os.path.split(output_file)[0]
-    geometry_file1 = output_file[:-3] + '_bedmachine.nc'    # Store bed used for this mini-run
-
-
-    # Convert trace dates to "seconds since..." format
-    dtt0 = datetime.datetime(dt0.year,dt0.month,dt0.day)
-    dtt1 = datetime.datetime(dt1.year,dt1.month,dt1.day)
-    t0_s = vseries.units_s.date2num(dtt0)
-    t1_s = vseries.units_s.date2num(dtt1)
-
-    with ioutil.tmp_dir(odir) as tdir:
-        # Get ice thickness, with extent adjusted for the present grounding line
-        # NOTE: This currently does NOT adjust ice thickness
-        thk = remover.get_thk(termini_closed_file, ix0)
-
-        # Create custom geometry_file (bedmachine_file)
-        replace_thk(geometry_file, geometry_file1, thk)
-
-        try:
-            # Create temporary output file
-            output = PISM.util.prepare_output(os.path.join(tdir, 'output.nc3'), append_time=True)
-
-            ctx = PISM.Context()
-            # TODO: Shouldn't this go in calving0.init_geometry()?
-            ctx.config.set_number("geometry.ice_free_thickness_standard", self.kwargs['min_ice_thickness'])
-
-            grid = calving0.create_grid(ctx.ctx, geometry_file1, "thickness")
-            geometry = calving0.init_geometry(grid, geometry_file1, self.kwargs['min_ice_thickness'])
-            ice_velocity = calving0.init_velocity(grid, self.velocity_file)
-
-            # NB: here I use a low value of sigma_max to make it more
-            # interesting.
-            # default_kwargs = dict(
-            #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
-            fe_kwargs = dict(sigma_max=0.1e6)
-            front_evolution = calving0.FrontEvolution(grid, **fe_kwargs)
-        
-
-            # Iterate through portions of (dt0,dt1) with constant velocities
-            for itime,t0i_s,t1i_s in vseries(t0_s,t1_s):
-                ice_velocity.read(self.velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
-
-                front_evolution(geometry, ice_velocity,
-                    run_length = t1_s - t0_s,
-                    output=output)
-        finally:
-            output.close()
-
-
-        # Create the output file with correct time units
-        cmd = ['ncks', '-4', '-L', '1', '-O', os.path.join(tdir, 'output.nc3'), output_file]
-        subprocess.run(cmd, check=True)
-        os.remove(output_file3)
-        with netCDF4.Dataset(output_file4, 'a') as nc:
-            nc.variables['time'].units = 'seconds since {:04d}-{:02d}-{:02d}'.format(dt0.year,dt0.month,dt0.day)
 
 def iterate_termini(termini_file, map_crs):
     """Iterate through the terminus shapefiles from the CALFIN terminus dataset
@@ -491,7 +421,7 @@ def main1():
         if ix < 34:
             continue
 
-        thk = remover.get_thk(termini_closed_file, ix)
+        thk = remover.get_thk(termini_closed_file, ix, odir)
 
 
 
@@ -548,7 +478,7 @@ class compute(object):
         # Determine terminus pairs
         self.terminus_pairs = list()    # [ ((dt0,ix0), (dt1,ix1)) ]
         attrss = enumerate(iter([attrs for _,attrs in geoutil.read_shapes(termini_closed_file)]))
-        self.output_files = list()
+        self.odir = os.path.split(otemplate)[0]
         ix0,attrs0 = next(attrss)
         dt0 = datetime.datetime.strptime(attrs0['Date'], '%Y-%m-%d').date()
         self.output_files = list()
@@ -557,8 +487,7 @@ class compute(object):
 
             if ix0 == 34:    # DEBUGGING: just one
                 self.terminus_pairs.append((ix0,dt0,ix1,dt1))
-                self.output_files.append(otemplate.format(dict(
-                    dt0=dt0, dt1=dt1)))
+                self.output_files.append(otemplate.format(dt0=dt0, dt1=dt1))
 
             ix0,dt0 = ix1,dt1
 
@@ -581,7 +510,8 @@ class compute(object):
             t1_s = vseries.units_s.date2num(datetime.datetime(dt1.year,dt1.month,dt1.day))
 
             # Get ice thickness, adjusted for the present grounding line
-            thk = remover.get_thk(trace0)
+            thk = remover.get_thk(self.termini_closed_file, ix0, self.odir)
+            print('thk sum: {}'.format(np.sum(np.sum(thk))))
 #            print('********* thk sum: {}'.format(np.sum(np.sum(thk))))
             # Create custom geometry_file (bedmachine_file)
             geometry_file1 = output_file4[:-3] + '_bedmachine.nc'
@@ -635,11 +565,11 @@ class compute(object):
 def main():
     makefile = make.Makefile()
     geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W71.65N.nc'
-    velocity_file = 'outputs/TSX_W71.65N_2008_2020_pism_filled.nc'
+    velocity_file = 'outputs/TSX_W71.65N_2008_2020_filled.nc'
     termini_closed_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_closed_v1.0.shp'
     otemplate = 'outputs/retreat_calfin_W71.65N_{dt0}_{dt1}.nc'
 
     compute(makefile,
-        geometry_file, velocity_file, termini_closed_file, '.').run()
+        geometry_file, velocity_file, termini_closed_file, otemplate).run()
 
 main()
