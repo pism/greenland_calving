@@ -311,12 +311,7 @@ class IceRemover2(object):
             # Remove downstream ice
             thk = np.zeros(self.thk.shape)
             thk[:] = self.thk[:]
-            print('thk sum1: {}'.format(np.sum(np.sum(self.thk))))
-            print('thk sum2: {}'.format(np.sum(np.sum(thk))))
-            thk[fjord] = -100
-            print('thk sum3: {}'.format(np.sum(np.sum(thk))))
-
-    #        thk *= 0.5
+            thk[fjord] = 0
 
             return thk
 
@@ -485,9 +480,12 @@ class compute(object):
         for ix1,attrs1 in attrss:
             dt1 = datetime.datetime.strptime(attrs1['Date'], '%Y-%m-%d').date()
 
-            if ix0 == 34:    # DEBUGGING: just one
+#            if ix0 == 34:    # DEBUGGING: just one
+            if dt0.year >= 2012:   # DEBUGGING
                 self.terminus_pairs.append((ix0,dt0,ix1,dt1))
-                self.output_files.append(otemplate.format(dt0=dt0, dt1=dt1))
+                sdt0 = datetime.datetime.strftime(dt0, '%Y%m%d')
+                sdt1 = datetime.datetime.strftime(dt1, '%Y%m%d')
+                self.output_files.append(otemplate.format(dt0=sdt0, dt1=sdt1))
 
             ix0,dt0 = ix1,dt1
 
@@ -516,8 +514,14 @@ class compute(object):
             # Create custom geometry_file (bedmachine_file)
             geometry_file1 = output_file4[:-3] + '_bedmachine.nc'
             replace_thk(self.geometry_file, geometry_file1, thk)
+            geometry_file1 = self.geometry_file    # DEBUG
             try:
-                output = PISM.util.prepare_output(output_file3, append_time=True)
+
+                # The append_time=True argument of prepare_output
+                # determines if after this call the file will contain
+                # zero (append_time=False) or one (append_time=True)
+                # records.
+                output = PISM.util.prepare_output(output_file3, append_time=False)
 
                 #### I need to mimic this: Ross_combined.nc plus the script that made it
                 # Script in the main PISM repo, it's in examples/ross/preprocess.py
@@ -529,33 +533,45 @@ class compute(object):
 
                 grid = calving0.create_grid(ctx.ctx, geometry_file1, "thickness")
                 geometry = calving0.init_geometry(grid, geometry_file1, self.kwargs['min_ice_thickness'])
-                ice_velocity = calving0.init_velocity(grid, self.velocity_file)
 
-                # NB: here I use a low value of sigma_max to make it more
-                # interesting.
+
+                ice_velocity = calving0.init_velocity(grid, self.velocity_file)
+                print('ice_velocity sum: '.format(np.sum(np.sum(ice_velocity))))
+
+                # NB: For debugging I might use a low value of sigma_max to make SURE things retreat
                 # default_kwargs = dict(
                 #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
-                fe_kwargs = dict(sigma_max=0.1e6)
+#                fe_kwargs = dict(sigma_max=0.1e6)
+                fe_kwargs = dict(sigma_max=1e6)
                 front_evolution = calving0.FrontEvolution(grid, **fe_kwargs)
+
+                # ========== ************ DEBUGGING *****************
+#                xout = PISM.util.prepare_output('x.nc', append_time=False)
+#                PISM.append_time(xout, front_evolution.config, 17)
+#                geometry.ice_thickness.write(xout)
+#                geometry.cell_type.write(xout)
             
 
                 # Iterate through portions of (dt0,dt1) with constant velocities
+                print('TIMESPAN: {} {}'.format(t0_s, t1_s))
                 for itime,t0i_s,t1i_s in vseries(t0_s,t1_s):
+                    print('ITIME: {} {} ({} -- {})'.format(t0i_s, t1i_s, dt0, dt1))
                     ice_velocity.read(self.velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
 
                     front_evolution(geometry, ice_velocity,
-                        run_length = t1_s - t0_s,
+                        t0_s, t1_s,
                         output=output)
             finally:
                 output.close()
 
 
-            # Create the output file with correct time units
+            # Compress output file while correcting time units
             cmd = ['ncks', '-4', '-L', '1', '-O', output_file3, output_file4]
             subprocess.run(cmd, check=True)
             os.remove(output_file3)
             with netCDF4.Dataset(output_file4, 'a') as nc:
-                nc.variables['time'].units = 'seconds since {:04d}-{:02d}-{:02d}'.format(dt0.year,dt0.month,dt0.day)
+                nc.variables['time'].units = str(vseries.units_s) # 'seconds since {:04d}-{:02d}-{:02d}'.format(dt0.year,dt0.month,dt0.day)
+                nc.variables['time'].calendar = 'proleptic_gregorian'
 
 
     #            # Add dummy var to output_file; helps ncview
