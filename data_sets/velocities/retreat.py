@@ -13,7 +13,7 @@ import shapely.geometry
 from osgeo import ogr
 import shapely.ops
 import shapely.wkt, shapely.wkb
-from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil
+from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil,flowfill
 import datetime
 import PISM
 from uafgi.pism import calving0
@@ -453,7 +453,7 @@ class compute(object):
     default_kwargs = dict(calving0.FrontEvolution.default_kwargs.items())
     default_kwargs['min_ice_thickness'] = 50.0
 
-    def __init__(self, makefile, geometry_file, velocity_file, termini_closed_file, otemplate, **kwargs0):
+    def __init__(self, makefile, geometry_file, velocity_file, termini_file, termini_closed_file, otemplate, **kwargs0):
         """kwargs0:
             See default_kwargs above
         otemplate:
@@ -466,6 +466,7 @@ class compute(object):
         print('geometry_file = {}'.format(self.geometry_file))
         self.velocity_file = velocity_file
         print('velocity_file = {}'.format(self.velocity_file))
+        self.termini_file = termini_file
         self.termini_closed_file = termini_closed_file
 #        print('trace_file = {}'.format(self.trace_file))
 
@@ -490,7 +491,7 @@ class compute(object):
             ix0,dt0 = ix1,dt1
 
         self.rule = makefile.add(self.run,
-            [geometry_file, velocity_file, termini_closed_file],
+            [geometry_file, velocity_file, termini_file, termini_closed_file],
             self.output_files)
 
     def run(self):
@@ -498,6 +499,21 @@ class compute(object):
         remover = IceRemover2(self.geometry_file)
         vseries = VelocitySeries(self.velocity_file)
 
+        # Determine trough of this glacier.  Get sample terminus based
+        # on first terminus in our run
+        ix0,dt0,_,_ = self.terminus_pairs[0]
+        t0_s = vseries.units_s.date2num(datetime.datetime(dt0.year,dt0.month,dt0.day))
+        itime0,_,_ = next(vseries(t0_s,t0_s+1))    # Get a sample time for sample velocities
+        with netCDF4.Dataset(self.velocity_file) as nc:
+            vsvel = nc.variables['v_ssa_bc'][itime0,:]
+            usvel = nc.variables['u_ssa_bc'][itime0,:]
+        with netCDF4.Dataset(self.geometry_file) as nc:
+            bed = nc.variables['bed'][:]
+            thk = nc.variables['thickness'][:]
+        trough = flowfill.single_trough(thk, bed, vsvel, usvel)
+
+
+        # Run the glacier between timesteps
         for (ix0,dt0,ix1,dt1),output_file4 in zip(self.terminus_pairs, self.output_files):
             output_file3 = output_file4 + '3'    # .nc3
 
@@ -514,7 +530,11 @@ class compute(object):
             # Create custom geometry_file (bedmachine_file)
             geometry_file1 = output_file4[:-3] + '_bedmachine.nc'
             replace_thk(self.geometry_file, geometry_file1, thk)
-            geometry_file1 = self.geometry_file    # DEBUG
+            with netCDF4.Dataset(geometry_file1, 'a') as nc:
+                ncv = nc.createVariable('trough', 'i1', ('y','x'))
+                ncv[:] = trough
+
+#            geometry_file1 = self.geometry_file    # DEBUG
             try:
 
                 # The append_time=True argument of prepare_output
@@ -582,10 +602,11 @@ def main():
     makefile = make.Makefile()
     geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W71.65N.nc'
     velocity_file = 'outputs/TSX_W71.65N_2008_2020_filled.nc'
+    termini_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_v1.0.shp'
     termini_closed_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_closed_v1.0.shp'
     otemplate = 'outputs/retreat_calfin_W71.65N_{dt0}_{dt1}.nc'
 
     compute(makefile,
-        geometry_file, velocity_file, termini_closed_file, otemplate).run()
+        geometry_file, velocity_file, termini_file, termini_closed_file, otemplate).run()
 
 main()
