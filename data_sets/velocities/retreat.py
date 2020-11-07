@@ -20,6 +20,7 @@ from uafgi.pism import calving0
 from uafgi.make import ncmake
 import subprocess
 import shapefile
+from scipy import signal
 
 def iter_features(trace_files):
     """Reads features out of a GeoJSON file"""
@@ -97,6 +98,11 @@ class VelocitySeries(object):
             time_units = cf_units.Unit(nctime.units, nctime.calendar)
             self.units_s = cfutil.replace_reftime_unit(time_units, 'seconds')
             self.times_s = [time_units.convert(t_d, self.units_s) for t_d in times_d]
+
+            # Obtain coordinate reference system
+            wks_s = vnc.variables['polar_stereographic'].spatial_ref
+            self.map_crs = pyproj.CRS.from_string(wks_s)
+
 
     def __call__(self, t0_s, t1_s):
         """Iterator of a series of velocity fields for a given date range"""
@@ -293,7 +299,7 @@ class IceRemover2(object):
         with ioutil.tmp_dir(odir, tdir='tdir') as tdir:
 #        if True:
             # Select a single polygon out of the shapefile
-            one_terminus = os.path.join(tdir, 'one_terminus.shp')
+            one_terminus = os.path.join(tdir, 'one_terminus_closed.shp')
             cmd = ['ogr2ogr', one_terminus, termini_closed_file, '-fid', str(index)]
             subprocess.run(cmd, check=True)
 
@@ -447,6 +453,33 @@ def main1():
 #main1()
 #sys.exit(0)
 
+def get_fjord(bed, terminus_location):
+    passq
+
+
+class ReadExtents(object):
+    """Reads extents from NetCDF file.
+    May be used, eg, as:
+                '-projwin', str(x0), str(y1), str(x1), str(y0),
+                '-tr', str(dx), str(dy),
+    """
+    def __init__(self, data_path):
+        with netCDF4.Dataset(data_path) as nc:
+            xx = nc.variables['x'][:]
+            self.dx = xx[1]-xx[0]
+            half_dx = .5 * self.dx
+            self.x0 = round(xx[0] - half_dx)
+            self.x1 = round(xx[-1] + half_dx)
+
+            yy = nc.variables['y'][:]
+            self.dy = yy[1]-yy[0]
+            half_dy = .5 * self.dy
+            self.y0 = round(yy[0] - half_dy)
+            self.y1 = round(yy[-1] + half_dy)
+
+
+            self.wks_s = nc.variables['polar_stereographic'].spatial_ref
+
 
 class compute(object):
 
@@ -495,44 +528,109 @@ class compute(object):
             self.output_files)
 
     def run(self):
-        proj = geojson_converter(self.velocity_file)
-        remover = IceRemover2(self.geometry_file)
-        vseries = VelocitySeries(self.velocity_file)
-
-        # Determine trough of this glacier.  Get sample terminus based
-        # on first terminus in our run
-        ix0,dt0,_,_ = self.terminus_pairs[0]
-        t0_s = vseries.units_s.date2num(datetime.datetime(dt0.year,dt0.month,dt0.day))
-        itime0,_,_ = next(vseries(t0_s,t0_s+1))    # Get a sample time for sample velocities
-        with netCDF4.Dataset(self.velocity_file) as nc:
-            vsvel = nc.variables['v_ssa_bc'][itime0,:]
-            usvel = nc.variables['u_ssa_bc'][itime0,:]
-        with netCDF4.Dataset(self.geometry_file) as nc:
-            bed = nc.variables['bed'][:]
-            thk = nc.variables['thickness'][:]
-        trough = flowfill.single_trough(thk, bed, vsvel, usvel)
+        with ioutil.tmp_dir(self.odir, tdir='tdir') as tdir:
+            proj = geojson_converter(self.velocity_file)
+            remover = IceRemover2(self.geometry_file)
+            vseries = VelocitySeries(self.velocity_file)
 
 
-        # Run the glacier between timesteps
-        for (ix0,dt0,ix1,dt1),output_file4 in zip(self.terminus_pairs, self.output_files):
-            output_file3 = output_file4 + '3'    # .nc3
+            # Get CRS out of shapefile
+            with open(self.termini_file[:-4] + '.prj') as fin:
+                termini_crs = pyproj.CRS.from_string(next(fin))
 
-            print('============ Running {} - {}'.format(dt0,dt1))
+            # Converts from termini_crs to map_crs
+            # See for always_xy: https://proj.org/faq.html#why-is-the-axis-ordering-in-proj-not-consistent
+            proj = pyproj.Transformer.from_crs(termini_crs, vseries.map_crs, always_xy=True)
 
-            # Convert to "seconds since..." units                       
-            t0_s = vseries.units_s.date2num(datetime.datetime(dt0.year,dt0.month,dt0.day))
-            t1_s = vseries.units_s.date2num(datetime.datetime(dt1.year,dt1.month,dt1.day))
+            # Run the glacier between timesteps
+            for (ix0,dt0,ix1,dt1),output_file4 in zip(self.terminus_pairs, self.output_files):
+                output_file3 = output_file4 + '3'    # .nc3
 
-            # Get ice thickness, adjusted for the present grounding line
-            thk = remover.get_thk(self.termini_closed_file, ix0, self.odir)
-            print('thk sum: {}'.format(np.sum(np.sum(thk))))
-#            print('********* thk sum: {}'.format(np.sum(np.sum(thk))))
-            # Create custom geometry_file (bedmachine_file)
-            geometry_file1 = output_file4[:-3] + '_bedmachine.nc'
-            replace_thk(self.geometry_file, geometry_file1, thk)
-            with netCDF4.Dataset(geometry_file1, 'a') as nc:
-                ncv = nc.createVariable('trough', 'i1', ('y','x'))
-                ncv[:] = trough
+
+                # Get ice thickness, adjusted for the present grounding line
+                thk = remover.get_thk(self.termini_closed_file, ix0, self.odir)
+                print('thk sum: {}'.format(np.sum(np.sum(thk))))
+    #            print('********* thk sum: {}'.format(np.sum(np.sum(thk))))
+                # Create custom geometry_file (bedmachine_file)
+                geometry_file1 = output_file4[:-3] + '_bedmachine.nc'
+                replace_thk(self.geometry_file, geometry_file1, thk)
+
+                # Convert to "seconds since..." units                       
+                t0_s = vseries.units_s.date2num(datetime.datetime(dt0.year,dt0.month,dt0.day))
+                t1_s = vseries.units_s.date2num(datetime.datetime(dt1.year,dt1.month,dt1.day))
+
+                # ---------------------- Where to look for ice changing
+
+                # ----- Determine trough of this glacier.  Get sample terminus based
+                # on first terminus in our run
+                #ix0,dt0,_,_ = self.terminus_pairs[0]
+                #t0_s = vseries.units_s.date2num(datetime.datetime(dt0.year,dt0.month,dt0.day))
+                itime0,_,_ = next(vseries(t0_s,t1_s))    # Get a sample time for sample velocities
+                #with netCDF4.Dataset(self.velocity_file) as nc:
+                #    vsvel = nc.variables['v_ssa_bc'][itime0,:]
+                #    usvel = nc.variables['u_ssa_bc'][itime0,:]
+                with netCDF4.Dataset(self.geometry_file) as nc:
+                    bed = nc.variables['bed'][:]
+                    thk = nc.variables['thickness'][:]
+                    yy = nc.variables['y'][:]
+                    xx = nc.variables['x'][:]
+                dyx = (yy[1]-yy[0], xx[1]-xx[0])
+
+                # trough = flowfill.single_trough(thk, bed, vsvel, usvel, terminus_centroid, 20000)
+                #with netCDF4.Dataset(geometry_file1, 'a') as nc:
+                #    ncv = nc.createVariable('trough', 'i1', ('y','x'))
+                #    ncv[:] = trough
+                # trough_d = trough.astype('d')
+
+                # ----- Rasterize the terminus trace
+                ext = ReadExtents(self.geometry_file)
+                one_terminus = os.path.join(tdir, 'one_terminus.shp')
+                cmd = ['ogr2ogr', one_terminus, self.termini_file, '-fid', str(ix0)]
+                subprocess.run(cmd, check=True)
+
+                terminus_raster = os.path.join(tdir, 'terminus_raster.nc')
+                cmd = ['gdal_rasterize', 
+                    '-a_srs', ext.wks_s,
+                    '-tr', str(ext.dx), str(ext.dy),
+                    '-te', str(ext.x0), str(ext.y0), str(ext.x1), str(ext.y1),
+                    '-burn', '1', one_terminus, terminus_raster]
+                print(' '.join(cmd))
+                subprocess.run(cmd, check=True)
+                with netCDF4.Dataset(terminus_raster) as nc:
+                    terminus_d = nc.variables['Band1'][:]
+
+                #with shapefile.Reader(self.termini_file) as sf:
+                #    terminus_sf = sf.shape(ix0)
+                #    gline_xx,gline_yy = proj.transform(
+                #        [xy[0] for xy in terminus_sf.points],
+                #        [xy[1] for xy in terminus_sf.points])
+                #    glxy = list(zip(gline_xx,gline_yy))
+                #    terminus= shapely.geometry.LineString(glxy)
+                #terminus_centroid = terminus.centroid.coords[0]
+
+                # ------------ Find points close to the terminus trace
+                stencil = flowfill.disc_stencil(300., dyx)
+                terminus_domain = (signal.convolve2d(terminus_d, stencil, mode='same') != 0)
+                if np.sum(np.sum(terminus_domain)) == 0:
+                    raise ValueError('Nothing found in the domain, something is wrong...')
+
+                # Debug
+                with netCDF4.Dataset(geometry_file1, 'a') as nc:
+                    ncv = nc.createVariable('terminus', 'i1', ('y','x'))
+                    ncv[:] = terminus_domain
+
+
+
+                # ---------------------------------------------------------------
+
+                print('============ Running {} - {}'.format(dt0,dt1))
+
+
+
+
+
+
+#NO... we need to find the FJORD, not the TROUGH.  That is easy, based on bed depth.  Just make sure you find the portion of the fjord close to the terminus line.
 
 #            geometry_file1 = self.geometry_file    # DEBUG
             try:
@@ -602,7 +700,7 @@ def main():
     makefile = make.Makefile()
     geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W71.65N.nc'
     velocity_file = 'outputs/TSX_W71.65N_2008_2020_filled.nc'
-    termini_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_v1.0.shp'
+    termini_file = 'data/calfin/domain-termini/termini_1972-2019_Rink-Isbrae_v1.0.shp'
     termini_closed_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_closed_v1.0.shp'
     otemplate = 'outputs/retreat_calfin_W71.65N_{dt0}_{dt1}.nc'
 
