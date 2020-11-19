@@ -13,7 +13,7 @@ import shapely.geometry
 from osgeo import ogr
 import shapely.ops
 import shapely.wkt, shapely.wkb
-from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil,flowfill
+from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil,flowfill,shapelyutil
 import datetime
 import PISM
 from uafgi.pism import calving0
@@ -21,6 +21,7 @@ from uafgi.make import ncmake
 import subprocess
 import shapefile
 from scipy import signal
+import shapely.wkb
 
 def iter_features(trace_files):
     """Reads features out of a GeoJSON file"""
@@ -413,7 +414,6 @@ def main1():
     with netCDF4.Dataset(geometry_file) as nc:
         wks_s = nc.variables['polar_stereographic'].spatial_ref
     map_crs = pyproj.CRS.from_string(wks_s)
-#    print('map_crs = {}'.format(map_crs))
 
     # Read attributes from the shapefile
     remover = IceRemover2(geometry_file)
@@ -423,8 +423,6 @@ def main1():
             continue
 
         thk = remover.get_thk(termini_closed_file, ix, odir)
-
-
 
         with ioutil.tmp_dir(odir, tdir='tdir') as tdir:
 
@@ -442,19 +440,9 @@ def main1():
             with netCDF4.Dataset(cut_geometry_file) as nc:
                 bmask = nc.variables['Band1'][:].mask
 
-
-
-#            dt0 = datetime.datetime.strptime(attrs0['Date'], '%Y-%m-%d').date()
-
             break
 
 
-
-#main1()
-#sys.exit(0)
-
-def get_fjord(bed, terminus_location):
-    passq
 
 
 class ReadExtents(object):
@@ -528,31 +516,39 @@ class compute(object):
             self.output_files)
 
     def run(self):
-        with ioutil.tmp_dir(self.odir, tdir='tdir') as tdir:
-            proj = geojson_converter(self.velocity_file)
-            remover = IceRemover2(self.geometry_file)
-            vseries = VelocitySeries(self.velocity_file)
+        proj = geojson_converter(self.velocity_file)
+        remover = IceRemover2(self.geometry_file)
+        vseries = VelocitySeries(self.velocity_file)
 
 
-            # Get CRS out of shapefile
-            with open(self.termini_file[:-4] + '.prj') as fin:
-                termini_crs = pyproj.CRS.from_string(next(fin))
+        # Get CRS out of shapefile
+        with open(self.termini_file[:-4] + '.prj') as fin:
+            termini_crs = pyproj.CRS.from_string(next(fin))
 
-            # Converts from termini_crs to map_crs
-            # See for always_xy: https://proj.org/faq.html#why-is-the-axis-ordering-in-proj-not-consistent
-            proj = pyproj.Transformer.from_crs(termini_crs, vseries.map_crs, always_xy=True)
+        # Converts from termini_crs to map_crs
+        # See for always_xy: https://proj.org/faq.html#why-is-the-axis-ordering-in-proj-not-consistent
+        proj = pyproj.Transformer.from_crs(termini_crs, vseries.map_crs, always_xy=True)
 
-            # Run the glacier between timesteps
-            for (ix0,dt0,ix1,dt1),output_file4 in zip(self.terminus_pairs, self.output_files):
+        # Run the glacier between timesteps
+        for (ix0,dt0,ix1,dt1),output_file4 in zip(self.terminus_pairs, self.output_files):
+
+            # Check if (this part of) output already exists
+            if os.path.exists(output_file4):
+                continue
+
+            with ioutil.tmp_dir(self.odir, tdir='tdir', clear=True) as tdir:
+
+
                 output_file3 = output_file4 + '3'    # .nc3
-
+                output_shp = output_file4[:-3] + '_advret.shp'    # Advance/Retreat polygons
 
                 # Get ice thickness, adjusted for the present grounding line
                 thk = remover.get_thk(self.termini_closed_file, ix0, self.odir)
                 print('thk sum: {}'.format(np.sum(np.sum(thk))))
     #            print('********* thk sum: {}'.format(np.sum(np.sum(thk))))
                 # Create custom geometry_file (bedmachine_file)
-                geometry_file1 = output_file4[:-3] + '_bedmachine.nc'
+                #geometry_file1 = output_file4[:-3] + '_bedmachine.nc'
+                geometry_file1 = os.path.join(tdir, 'geometry_file1.nc')
                 replace_thk(self.geometry_file, geometry_file1, thk)
 
                 # Convert to "seconds since..." units                       
@@ -598,103 +594,182 @@ class compute(object):
                 subprocess.run(cmd, check=True)
                 with netCDF4.Dataset(terminus_raster) as nc:
                     terminus_d = nc.variables['Band1'][:]
-
-                #with shapefile.Reader(self.termini_file) as sf:
-                #    terminus_sf = sf.shape(ix0)
-                #    gline_xx,gline_yy = proj.transform(
-                #        [xy[0] for xy in terminus_sf.points],
-                #        [xy[1] for xy in terminus_sf.points])
-                #    glxy = list(zip(gline_xx,gline_yy))
-                #    terminus= shapely.geometry.LineString(glxy)
-                #terminus_centroid = terminus.centroid.coords[0]
+                # Change fill value to 0
+                terminus_d.data[terminus_d.mask] = 0
+                # Throw away the mask
+                terminus_d = terminus_d.data
 
                 # ------------ Find points close to the terminus trace
-                stencil = flowfill.disc_stencil(300., dyx)
+                stencil = flowfill.disc_stencil(3000., dyx)  # Distance from terminus
                 terminus_domain = (signal.convolve2d(terminus_d, stencil, mode='same') != 0)
                 if np.sum(np.sum(terminus_domain)) == 0:
                     raise ValueError('Nothing found in the domain, something is wrong...')
 
+                # ----------------------
+                # Intersect points close to terminus trace w/ fjord
+                # (areas below sea level).  This gives the mask of
+                # points where we check to see ice added/removed
+                # during course of a run.
+                fjord = (bed < 0)
+                terminus_fjord = (np.logical_and(fjord, terminus_domain != 0))
+
                 # Debug
                 with netCDF4.Dataset(geometry_file1, 'a') as nc:
                     ncv = nc.createVariable('terminus', 'i1', ('y','x'))
-                    ncv[:] = terminus_domain
+                    ncv[:] = terminus_fjord
 
 
 
                 # ---------------------------------------------------------------
 
                 print('============ Running {} - {}'.format(dt0,dt1))
+                try:
+
+                    # The append_time=True argument of prepare_output
+                    # determines if after this call the file will contain
+                    # zero (append_time=False) or one (append_time=True)
+                    # records.
+                    output = PISM.util.prepare_output(output_file3, append_time=False)
+
+                    #### I need to mimic this: Ross_combined.nc plus the script that made it
+                    # Script in the main PISM repo, it's in examples/ross/preprocess.py
+                    #self.geometry_file = "~/github/pism/pism/examples/ross/Ross_combined.nc"
+                    # self.geometry_file = "Ross_combined.nc"
+                    ctx = PISM.Context()
+                    # TODO: Shouldn't this go in calving0.init_geometry()?
+                    ctx.config.set_number("geometry.ice_free_thickness_standard", self.kwargs['min_ice_thickness'])
+
+                    grid = calving0.create_grid(ctx.ctx, geometry_file1, "thickness")
+                    geometry = calving0.init_geometry(grid, geometry_file1, self.kwargs['min_ice_thickness'])
 
 
+                    ice_velocity = calving0.init_velocity(grid, self.velocity_file)
+                    print('ice_velocity sum: '.format(np.sum(np.sum(ice_velocity))))
+
+                    # NB: For debugging I might use a low value of sigma_max to make SURE things retreat
+                    # default_kwargs = dict(
+                    #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
+    #                fe_kwargs = dict(sigma_max=0.1e6)
+                    fe_kwargs = dict(sigma_max=1e6)
+                    front_evolution = calving0.FrontEvolution(grid, **fe_kwargs)
+
+                    # ========== ************ DEBUGGING *****************
+    #                xout = PISM.util.prepare_output('x.nc', append_time=False)
+    #                PISM.append_time(xout, front_evolution.config, 17)
+    #                geometry.ice_thickness.write(xout)
+    #                geometry.cell_type.write(xout)
+                
+
+                    # Iterate through portions of (dt0,dt1) with constant velocities
+                    print('TIMESPAN: {} {}'.format(t0_s, t1_s))
+                    for itime,t0i_s,t1i_s in vseries(t0_s,t1_s):
+                        print('ITIME: {} {} ({} -- {})'.format(t0i_s, t1i_s, dt0, dt1))
+                        ice_velocity.read(self.velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
+
+                        front_evolution(geometry, ice_velocity,
+                            t0_s, t1_s,
+                            output=output)
+                    error_msg = None
+                except Exception as e:
+                    error_msg = str(e)
+                finally:
+                    output.close()
 
 
+                # Compress output file while correcting time units
+                cmd = ['ncks', '-4', '-L', '1', '-O', output_file3, output_file4+'.tmp']
+                subprocess.run(cmd, check=True)
+                os.remove(output_file3)
+                with netCDF4.Dataset(output_file4+'.tmp', 'a') as nc:
+                    nc.success = ('t' if error_msg is None else 'f')
+                    if error_msg is not None:
+                        nc.error_msg = error_msg
+                    nc.variables['time'].units = str(vseries.units_s) # 'seconds since {:04d}-{:02d}-{:02d}'.format(dt0.year,dt0.month,dt0.day)
+                    nc.variables['time'].calendar = 'proleptic_gregorian'
 
+                # ----------------- Compute advance and retreat polygons from terminus traces
+                with shapelyutil.ShapefileReader(self.termini_closed_file, vseries.map_crs) as sfr:
+                    tc0 = sfr.polygon(ix0)
+                    tc1 = sfr.polygon(ix1)
 
-#NO... we need to find the FJORD, not the TROUGH.  That is easy, based on bed depth.  Just make sure you find the portion of the fjord close to the terminus line.
+                adv_poly = tc1.difference(tc0)
+                ret_poly = tc0.difference(tc1)
 
-#            geometry_file1 = self.geometry_file    # DEBUG
-            try:
+                with shapelyutil.ShapefileWriter(
+                    output_shp, 'MultiPolygon',
+                    (('sign', ogr.OFTInteger),
+                    ('label', ogr.OFTString) )) as out:
 
-                # The append_time=True argument of prepare_output
-                # determines if after this call the file will contain
-                # zero (append_time=False) or one (append_time=True)
-                # records.
-                output = PISM.util.prepare_output(output_file3, append_time=False)
+                    out.write(adv_poly, sign=1, label='advance')
+                    out.write(ret_poly, sign=-1, label='retreat')
 
-                #### I need to mimic this: Ross_combined.nc plus the script that made it
-                # Script in the main PISM repo, it's in examples/ross/preprocess.py
-                #self.geometry_file = "~/github/pism/pism/examples/ross/Ross_combined.nc"
-                # self.geometry_file = "Ross_combined.nc"
-                ctx = PISM.Context()
-                # TODO: Shouldn't this go in calving0.init_geometry()?
-                ctx.config.set_number("geometry.ice_free_thickness_standard", self.kwargs['min_ice_thickness'])
+                # ----------------------------------------------------
+                # Examine first and last frame of the PISM run
+                print('Getting thk from: {}'.format(output_file4+'.tmp'))
+                with netCDF4.Dataset(output_file4+'.tmp') as nc:
+                    ncthk = nc.variables['thk']
+                    ntime = ncthk.shape[0]
+                    thk0 = ncthk[0,:,:]
+                    thk1 = ncthk[ntime-1,:,:]
 
-                grid = calving0.create_grid(ctx.ctx, geometry_file1, "thickness")
-                geometry = calving0.init_geometry(grid, geometry_file1, self.kwargs['min_ice_thickness'])
+                # Advance: Place starting with no ice, but now have ice
+                where_advance = np.logical_and(thk0 == 0, thk1 != 0)
+                where_advance[np.logical_not(terminus_fjord)] = False
+                # Retreat: Place starting with ice, not has no ice
+                where_retreat = np.logical_and(thk0 != 0, thk1 == 0)
+                where_retreat[np.logical_not(terminus_fjord)] = False
 
+                # Total volume of advance / retreat
+                adv = thk1.copy()
+                adv[np.logical_not(where_advance)] = 0
+                ret = thk0.copy()
+                ret[np.logical_not(where_retreat)] = 0
+                advret = adv - ret
+                thkdiff = thk1 - thk0
 
-                ice_velocity = calving0.init_velocity(grid, self.velocity_file)
-                print('ice_velocity sum: '.format(np.sum(np.sum(ice_velocity))))
+                # ------------------ Compute area of advance/retret in data vs. simulation
+                print('where_advance ', where_advance)
+                print('   sum ',np.sum(where_advance))
+                dyx_area = dyx[0]*dyx[1]
+                print('    dyx_area = ',dyx_area)
+                adv_model = np.sum(where_advance) * dyx_area
+                ret_model = np.sum(where_retreat) * dyx_area
+                adv_data = adv_poly.area
+                ret_data = ret_poly.area
+                print('AdvRet: {}'.format([adv_data, adv_model, ret_data, ret_model]))
 
-                # NB: For debugging I might use a low value of sigma_max to make SURE things retreat
-                # default_kwargs = dict(
-                #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
-#                fe_kwargs = dict(sigma_max=0.1e6)
-                fe_kwargs = dict(sigma_max=1e6)
-                front_evolution = calving0.FrontEvolution(grid, **fe_kwargs)
+                # ------------------- Append results to NetCDF file
+                with netCDF4.Dataset(output_file4+'.tmp', 'a') as nc:
+                    nc.success = ('t' if error_msg is None else 'f')
+                    nc.adv_data = adv_data
+                    nc.adv_model = adv_model
+                    nc.ret_data = ret_data
+                    nc.ret_model = ret_model
+                    nc.t0 = datetime.datetime.strftime(dt0, '%Y-%m-%d')
+                    nc.t1 = datetime.datetime.strftime(dt1, '%Y-%m-%d')
 
-                # ========== ************ DEBUGGING *****************
-#                xout = PISM.util.prepare_output('x.nc', append_time=False)
-#                PISM.append_time(xout, front_evolution.config, 17)
-#                geometry.ice_thickness.write(xout)
-#                geometry.cell_type.write(xout)
-            
+                    if error_msg is not None:
+                        nc.error_msg = error_msg
 
-                # Iterate through portions of (dt0,dt1) with constant velocities
-                print('TIMESPAN: {} {}'.format(t0_s, t1_s))
-                for itime,t0i_s,t1i_s in vseries(t0_s,t1_s):
-                    print('ITIME: {} {} ({} -- {})'.format(t0i_s, t1i_s, dt0, dt1))
-                    ice_velocity.read(self.velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
+                    ncv = nc.createVariable('advret', 'd', ('y','x'), zlib=True)
+                    ncv.description = 'Thickness change of advancing (positive) and retreating (negative) ice'
+                    ncv[:] = advret
 
-                    front_evolution(geometry, ice_velocity,
-                        t0_s, t1_s,
-                        output=output)
-            finally:
-                output.close()
+                    ncv = nc.createVariable('thkdiff', 'd', ('y','x'), zlib=True)
+                    ncv.units = 'm'
+                    ncv.description = 'Thickness changes between first and last frame'
+                    ncv[:] = thkdiff
 
+                    # ------------------- Concatenate in the _bedmachine.nc file
+                    with netCDF4.Dataset(geometry_file1) as ncin:
+                        nccopy = ncutil.copy_nc(ncin, nc)
+                        vnames = ('polar_stereographic', 'thickness', 'bed', 'terminus')
+                        nccopy.define_vars(vnames, zlib=True)
+                        for vname in vnames:
+                            nccopy.copy_var(vname)
 
-            # Compress output file while correcting time units
-            cmd = ['ncks', '-4', '-L', '1', '-O', output_file3, output_file4]
-            subprocess.run(cmd, check=True)
-            os.remove(output_file3)
-            with netCDF4.Dataset(output_file4, 'a') as nc:
-                nc.variables['time'].units = str(vseries.units_s) # 'seconds since {:04d}-{:02d}-{:02d}'.format(dt0.year,dt0.month,dt0.day)
-                nc.variables['time'].calendar = 'proleptic_gregorian'
-
-
-    #            # Add dummy var to output_file; helps ncview
-    #            with netCDF4.Dataset(output_file, 'a') as nc:
-    #                nc.createVariable('dummy', 'i', ('x',))
+                # ------------------- Create final output file
+                os.rename(output_file4+'.tmp', output_file4)
 
 def main():
     makefile = make.Makefile()
