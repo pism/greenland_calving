@@ -2,10 +2,13 @@ import re
 import os
 import netCDF4
 import pandas as pd
+import datetime
+
+# Collect together results of retreat.py into a single dataframe
 
 def collect_retreat():
     odir = 'outputs'
-    fnameRE = re.compile('retreat_calfin_W71.65N_{\d\d\d\d\d\d\d\d}_{\d\d\d\d\d\d\d\d}.nc')
+    fnameRE = re.compile(r'retreat_calfin_W71.65N_(\d\d\d\d\d\d\d\d)_(\d\d\d\d\d\d\d\d).nc$')
 
     dt0 = list()
     dt1 = list()
@@ -17,6 +20,7 @@ def collect_retreat():
         match = fnameRE.match(fname)
         if match is None:
             continue
+
         dt0.append(datetime.datetime.strptime(match.group(1), '%Y%m%d').date())
         dt1.append(datetime.datetime.strptime(match.group(2), '%Y%m%d').date())
 
