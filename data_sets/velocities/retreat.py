@@ -22,6 +22,7 @@ import subprocess
 import shapefile
 from scipy import signal
 import shapely.wkb
+import findiff
 
 def iter_features(trace_files):
     """Reads features out of a GeoJSON file"""
@@ -468,7 +469,7 @@ class ReadExtents(object):
 
             self.wks_s = nc.variables['polar_stereographic'].spatial_ref
 
-
+# -------------------------------------------------------------------
 class compute(object):
 
     default_kwargs = dict(calving0.FrontEvolution.default_kwargs.items())
@@ -495,7 +496,7 @@ class compute(object):
         # Determine terminus pairs
         self.terminus_pairs = list()    # [ ((dt0,ix0), (dt1,ix1)) ]
         attrss = enumerate(iter([attrs for _,attrs in geoutil.read_shapes(termini_closed_file)]))
-        self.odir = os.path.split(otemplate)[0]
+#        self.odir = os.path.split(otemplate)[0]
         ix0,attrs0 = next(attrss)
         dt0 = datetime.datetime.strptime(attrs0['Date'], '%Y-%m-%d').date()
         self.output_files = list()
@@ -532,22 +533,21 @@ class compute(object):
         # Run the glacier between timesteps
         for (ix0,dt0,ix1,dt1),output_file4 in zip(self.terminus_pairs, self.output_files):
 
+            odir = os.path.split(output_file4)[0]
+            os.makedirs(odir, exist_ok=True)
+
             # Check if (this part of) output already exists
             if os.path.exists(output_file4):
                 continue
 
-            with ioutil.tmp_dir(self.odir, tdir='tdir', clear=True) as tdir:
-
+            with ioutil.tmp_dir(odir, tdir='tdir', clear=True) as tdir:
 
                 output_file3 = output_file4 + '3'    # .nc3
                 output_shp = output_file4[:-3] + '_advret.shp'    # Advance/Retreat polygons
 
                 # Get ice thickness, adjusted for the present grounding line
-                thk = remover.get_thk(self.termini_closed_file, ix0, self.odir)
+                thk = remover.get_thk(self.termini_closed_file, ix0, odir)
                 print('thk sum: {}'.format(np.sum(np.sum(thk))))
-    #            print('********* thk sum: {}'.format(np.sum(np.sum(thk))))
-                # Create custom geometry_file (bedmachine_file)
-                #geometry_file1 = output_file4[:-3] + '_bedmachine.nc'
                 geometry_file1 = os.path.join(tdir, 'geometry_file1.nc')
                 replace_thk(self.geometry_file, geometry_file1, thk)
 
@@ -559,12 +559,7 @@ class compute(object):
 
                 # ----- Determine trough of this glacier.  Get sample terminus based
                 # on first terminus in our run
-                #ix0,dt0,_,_ = self.terminus_pairs[0]
-                #t0_s = vseries.units_s.date2num(datetime.datetime(dt0.year,dt0.month,dt0.day))
                 itime0,_,_ = next(vseries(t0_s,t1_s))    # Get a sample time for sample velocities
-                #with netCDF4.Dataset(self.velocity_file) as nc:
-                #    vsvel = nc.variables['v_ssa_bc'][itime0,:]
-                #    usvel = nc.variables['u_ssa_bc'][itime0,:]
                 with netCDF4.Dataset(self.geometry_file) as nc:
                     bed = nc.variables['bed'][:]
                     thk = nc.variables['thickness'][:]
@@ -629,6 +624,7 @@ class compute(object):
                     # determines if after this call the file will contain
                     # zero (append_time=False) or one (append_time=True)
                     # records.
+                    print('xxxx ',output_file3)
                     output = PISM.util.prepare_output(output_file3, append_time=False)
 
                     #### I need to mimic this: Ross_combined.nc plus the script that made it
@@ -667,7 +663,7 @@ class compute(object):
                         ice_velocity.read(self.velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
 
                         front_evolution(geometry, ice_velocity,
-                            t0_s, t1_s,
+                            t0_s, t0_s+1,#t1_s,   (DEBUG)
                             output=output)
                     error_msg = None
                 except Exception as e:
@@ -738,6 +734,102 @@ class compute(object):
                 ret_data = ret_poly.area
                 print('AdvRet: {}'.format([adv_data, adv_model, ret_data, ret_model]))
 
+                # ============================================================
+                # --------------- Compute functions of velocity
+                itime0,_,_ = next(vseries(t0_s,t1_s))
+                fname = self.velocity_file[:-10]+'.nc'
+                with netCDF4.Dataset(fname) as nc:
+                    # Flux, not surface velocity
+                    vv = thk * nc.variables['vy'][itime0,:]
+                    uu = thk * nc.variables['vx'][itime0,:]
+
+                # Compute Jacobian (gradiant) of Velocity vector
+                d_dy = findiff.FinDiff(0, dyx[0])
+                d_dx = findiff.FinDiff(1, dyx[1])
+                dv_dy = d_dy(vv)
+                dv_dx = d_dx(vv)
+                du_dy = d_dy(uu)
+                du_dx = d_dx(uu)
+                print('shapes1: {} {}'.format(vv.shape, dv_dx.shape))
+
+                # div = dv_dy + du_dx
+
+                # Compute strain rate tensor
+                # Follows: https://en.wikipedia.org/wiki/Strain-rate_tensor
+                # L = [[dv_dy, du_dy],
+                #      [dv_dx, du_dx]]
+                # E = 1/2 (L + L^T)    [symmetric tensor]
+                E_yy = dv_dy
+                E_xx = du_dx
+                E_yx = .5 * (du_dy + dv_dx)
+
+
+                # Obtain eigenvalues (L1,L2) of the strain rate tensor
+                # Closed form eigenvalues of a 2x2 matrix
+                # http://people.math.harvard.edu/~knill/teaching/math21b2004/exhibits/2dmatrices/index.html
+                T = E_yy + E_xx    # Trace of strain rate tensor = divergence of flow
+                flux_divergence = T    # Trace of tensor is same as flux divergence of flow (v,u)
+                D = E_yy*E_xx - E_yx*E_yx   # Determinate of strain rate tensor
+                qf_A = .5*T
+                qf_B = np.sqrt(.25*T*T - D)
+                L1 = qf_A + qf_B   # Biggest eigenvalue
+                L2 = qf_A - qf_B   # Smaller eigenvalue
+
+
+                # Follows Morlighem et al 2016: Modeling of Store
+                # Gletscher's calving dynamics, West Greenland, in
+                # response to ocean thermal forcing
+                # https://doi.org/10.1002/2016GL067695
+                print(type(L1))
+                print('shape2', L1.shape)
+                maxL1 = np.maximum(0.,L1)
+                maxL2 = np.maximum(0.,L2)
+                # e2 = [effective_tensile_strain_rate]^2
+                e2 = .5 * (maxL1*maxL1 + maxL2*maxL2)    # Eq 6
+
+                glen_exponent = 3    # n=3
+
+                # PISM computes ice hardness (B in Morlighem et al) as follows:
+                # https://github.com/pism/pism/blob/44db29423af6bdab2b5c990d08793010b2476cc5/src/rheology/IsothermalGlen.cc
+                # https://github.com/pism/pism/blob/44db29423af6bdab2b5c990d08793010b2476cc5/src/rheology/FlowLaw.cc
+                hardness_power = -1. / glen_exponent
+
+
+                # Table from p. 75 of:
+                # Cuffey, K., and W. S. B. Paterson (2010), The
+                # Physics of Glaciers, Elsevier, 4th ed., Elsevier,
+                # Oxford, U. K.
+                # Table 3.4: Recommended base values of creep
+                #            parameter $A$ at different temperatures
+                #            and $n=3$
+                # T (degC) | A (s-1Pa-3)
+                #  0    2.4e-24
+                #- 2    1.7e-24
+                #- 5    9.3e-25
+                #-10    3.5e-25
+                #-15    2.1e-25
+                #-20    1.2e-25
+                #-25    6.8e-26
+                #-30    3.7e-26
+                #-35    2.0e-26
+                #-40    1.0e-26
+                #-45    5.2e-27
+                #-50    2.6e-27
+
+                # https://github.com/pism/pism/blob/5e1debde2dcc69dfb966e8dec7a58963f1967caf/src/pism_config.cdl
+                # pism_config:flow_law.isothermal_Glen.ice_softness = 3.1689e-24;
+                # pism_config:flow_law.isothermal_Glen.ice_softness_doc = "ice softness used by IsothermalGlenIce :cite:`EISMINT96`";
+                # pism_config:flow_law.isothermal_Glen.ice_softness_type = "number";
+                # pism_config:flow_law.isothermal_Glen.ice_softness_units = "Pascal-3 second-1";
+                softness_A = 3.1689e-24
+                hardness_B = pow(softness_A, hardness_power)
+
+                # Compute tensile von Mises stress, used for threshold calving
+                tensile_von_Mises_stress = np.sqrt(3) * hardness_B * \
+                    np.power(e2, (1./(2*glen_exponent)))    # Eq 7
+                # =============================================================================
+
+
                 # ------------------- Append results to NetCDF file
                 with netCDF4.Dataset(output_file4+'.tmp', 'a') as nc:
                     nc.success = ('t' if error_msg is None else 'f')
@@ -760,6 +852,18 @@ class compute(object):
                     ncv.description = 'Thickness changes between first and last frame'
                     ncv[:] = thkdiff
 
+                    ncv = nc.createVariable('xflux_divergence', 'd', ('y','x'), zlib=True)
+                    ncv.units = 's-1'
+                    ncv.description = 'Flux divergence of flow'
+                    ncv[:] = flux_divergence
+
+                    ncv = nc.createVariable('sigma', 'd', ('y','x'), zlib=True)
+                    ncv.units = 'Pa'
+                    ncv.description = 'Tensile von Mises stress (Morlighem et al 2016)'
+                    ncv[:] = tensile_von_Mises_stress
+
+
+
                     # ------------------- Concatenate in the _bedmachine.nc file
                     with netCDF4.Dataset(geometry_file1) as ncin:
                         nccopy = ncutil.copy_nc(ncin, nc)
@@ -770,6 +874,10 @@ class compute(object):
 
                 # ------------------- Create final output file
                 os.rename(output_file4+'.tmp', output_file4)
+#                print('AA1 Exiting!')
+#                sys.exit(0)
+
+
 
 def main():
     makefile = make.Makefile()
@@ -777,7 +885,7 @@ def main():
     velocity_file = 'outputs/TSX_W71.65N_2008_2020_filled.nc'
     termini_file = 'data/calfin/domain-termini/termini_1972-2019_Rink-Isbrae_v1.0.shp'
     termini_closed_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_closed_v1.0.shp'
-    otemplate = 'outputs/retreat_calfin_W71.65N_{dt0}_{dt1}.nc'
+    otemplate = 'outputs/retreat_calfin_W71.65N_{dt0}_{dt1}/data.nc'
 
     compute(makefile,
         geometry_file, velocity_file, termini_file, termini_closed_file, otemplate).run()
