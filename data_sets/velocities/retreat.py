@@ -663,7 +663,7 @@ class compute(object):
                         ice_velocity.read(self.velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
 
                         front_evolution(geometry, ice_velocity,
-                            t0_s, t0_s+1,#t1_s,   (DEBUG)
+                            t0_s, t1_s,
                             output=output)
                     error_msg = None
                 except Exception as e:
@@ -883,6 +883,7 @@ def main():
     makefile = make.Makefile()
     geometry_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W71.65N.nc'
     velocity_file = 'outputs/TSX_W71.65N_2008_2020_filled.nc'
+#    velocity_file = 'outputs/GRE_G0240_W71.65N_2011_2018.nc'
     termini_file = 'data/calfin/domain-termini/termini_1972-2019_Rink-Isbrae_v1.0.shp'
     termini_closed_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_closed_v1.0.shp'
     otemplate = 'outputs/retreat_calfin_W71.65N_{dt0}_{dt1}/data.nc'
