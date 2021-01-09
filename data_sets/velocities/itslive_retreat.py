@@ -1,6 +1,6 @@
 import cf_units
 import bisect
-import sys,os,subprocess
+import sys,os,subprocess,traceback
 import numpy as np
 import netCDF4
 import geojson
@@ -13,7 +13,7 @@ import shapely.geometry
 from osgeo import ogr
 import shapely.ops
 import shapely.wkt, shapely.wkb
-from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil,flowfill,shputil,glaciers
+from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil,flowfill,shputil,glaciers,cdoutil,bedmachine
 import datetime
 import PISM
 from uafgi.pism import calving0
@@ -23,6 +23,7 @@ import shapefile
 from scipy import signal
 import shapely.wkb
 import findiff
+from uafgi.pism import pismutil
 
 
 
@@ -78,14 +79,20 @@ class compute(object):
         pass
 
 
-def get_terminus_fjord(termini_file, terminus_id, grid_file, tdir):
-    """Finds areas of the fjord close to a terminus"""
+def get_terminus_fjord(fb, termini_file, terminus_id, bedmachine_file, tdir):
+    """Finds areas of the fjord close to a terminus
+    fb:
+        Result of cdoutil.FileInfo(), gives geometry
+    """
+
+    with netCDF4.Dataset(bedmachine_file) as nc:
+        bed = nc.variables['bed'][:]
 
     # ----- Rasterize the terminus trace
-    terminus_d = next(shputil.raseterize_polygons(termini_file, [terminus_id], grid_file, tdir))
+    terminus_d = next(shputil.rasterize_polygons(termini_file, [terminus_id], bedmachine_file, tdir))
 
     # ------------ Find points close to the terminus trace
-    stencil = flowfill.disc_stencil(3000., (fb.dy, db.dx))  # Distance from terminus
+    stencil = flowfill.disc_stencil(3000., (fb.dy, fb.dx))  # Distance from terminus
     terminus_domain = (signal.convolve2d(terminus_d, stencil, mode='same') != 0)
     if np.sum(np.sum(terminus_domain)) == 0:
         raise ValueError('Nothing found in the domain, something is wrong...')
@@ -98,20 +105,23 @@ def get_terminus_fjord(termini_file, terminus_id, grid_file, tdir):
     fjord = (bed < 0)
     terminus_fjord = (np.logical_and(fjord, terminus_domain != 0))
 
+    return terminus_fjord
 
 
-def add_analysis(output_file4, bedmachine_file1):
+def add_analysis(output_file4, itime, dt0, dt1, bedmachine_file1, velocity_file, fb, terminus_fjord):
     """Analyzes the run and adds variables to the file with that analysis.
     output_file4:
         File to analyze
-    bedmachine_file1:
+    bedmachine_file1: (IN/OUT)
         Extract of BedMachine to get other stuff out of
+    fb: FileInfo
+        Domain bounds, consistent with bedmachine_file1
     """
 
     # ----------------------------------------------------
     # Examine first and last frame of the PISM run
-    print('Getting thk from: {}'.format(output_file4_tmp))
-    with netCDF4.Dataset(output_file4_tmp) as nc:
+    print('Getting thk from: {}'.format(output_file4))
+    with netCDF4.Dataset(output_file4) as nc:
         ncthk = nc.variables['thk']
         ntime = ncthk.shape[0]
         thk0 = ncthk[0,:,:]
@@ -135,23 +145,22 @@ def add_analysis(output_file4, bedmachine_file1):
     # ------------------ Compute area of advance/retret in data vs. simulation
     print('where_advance ', where_advance)
     print('   sum ',np.sum(where_advance))
-    dyx_area = dyx[0]*dyx[1]
+    dyx_area = fb.dx*fb.dy
     print('    dyx_area = ',dyx_area)
     adv_model = np.sum(where_advance) * dyx_area
     ret_model = np.sum(where_retreat) * dyx_area
-    print('AdvRet: {}'.format([adv_data, adv_model, ret_data, ret_model]))
+    print('AdvRet: {}'.format([adv_model, ret_model]))
 
     # ============================================================
     # --------------- Compute functions of velocity
-    itime0,_,_ = next(vseries(t0_s,t1_s))
     with netCDF4.Dataset(velocity_file) as nc:
         # Flux, not surface velocity
-        vv = thk * nc.variables['v_ssa_bc'][itime0,:]
-        uu = thk * nc.variables['u_ssa_bc'][itime0,:]
+        vv = thk0 * nc.variables['v_ssa_bc'][itime,:]
+        uu = thk0 * nc.variables['u_ssa_bc'][itime,:]
 
     # Compute Jacobian (gradiant) of Velocity vector
-    d_dy = findiff.FinDiff(0, dyx[0])
-    d_dx = findiff.FinDiff(1, dyx[1])
+    d_dy = findiff.FinDiff(0, fb.dy)
+    d_dx = findiff.FinDiff(1, fb.dx)
     dv_dy = d_dy(vv)
     dv_dx = d_dx(vv)
     du_dy = d_dy(uu)
@@ -237,17 +246,17 @@ def add_analysis(output_file4, bedmachine_file1):
 
 
     # ------------------- Append results to NetCDF file
-    with netCDF4.Dataset(output_file4_tmp, 'a') as nc:
-        nc.success = ('t' if error_msg is None else 'f')
-        nc.adv_data = adv_data
+    with netCDF4.Dataset(output_file4, 'a') as nc:
+#        nc.success = ('t' if error_msg is None else 'f')
+#        nc.adv_data = adv_data
         nc.adv_model = adv_model
-        nc.ret_data = ret_data
+#        nc.ret_data = ret_data
         nc.ret_model = ret_model
         nc.t0 = datetime.datetime.strftime(dt0, '%Y-%m-%d')
         nc.t1 = datetime.datetime.strftime(dt1, '%Y-%m-%d')
 
-        if error_msg is not None:
-            nc.error_msg = error_msg
+#        if error_msg is not None:
+#            nc.error_msg = error_msg
 
         ncv = nc.createVariable('advret', 'd', ('y','x'), zlib=True)
         ncv.description = 'Thickness change of advancing (positive) and retreating (negative) ice'
@@ -301,9 +310,9 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
         return [output_file3, output_shp]
 
 
-    # Check if the output already exists
-    if os.path.exists(output_file4):
-        return
+#    # Check if the output already exists
+#    if os.path.exists(output_file4):
+#        return
 
     # Get total kwargs to use for PISM
     default_kwargs = dict(calving0.FrontEvolution.default_kwargs.items())
@@ -322,7 +331,7 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
     years_ix = dict((dt.year,ix) for ix,dt in enumerate(fb.datetimes))
 
     # Run the glacier between timesteps
-    terminus_ix = 187    # Index in terminus file
+    # terminus_ix = 187    # Index in terminus file
     itime = years_ix[year]    # Index in velocity file
 
     # Prepare to store the output file
@@ -331,24 +340,17 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
         os.makedirs(odir, exist_ok=True)
 
     # Get ice thickness, adjusted for the present grounding line
-    thk = remover.get_thk(termini_closed_file, ix0, odir)
+    thk = remover.get_thk(termini_closed_file, terminus_id, odir, tdir)
     print('thk sum: {}'.format(np.sum(np.sum(thk))))
     bedmachine_file1 = tdir.filename()
-    replace_thk(bedmachine_file, bedmachine_file1, thk)
-    with netCDF.Dataset(bedmachine_file1) as nc:
-        bed = nc.variables['bed'][:]
+    bedmachine.replace_thk(bedmachine_file, bedmachine_file1, thk)
 
     # Obtain start and end time in PISM units (seconds)
-    t0_s = fb.time_units_s.date2num(datetime.datetime(year,1,1))
-    t0_s = fb.time_units_s.date2num(datetime.datetime(year+1,1,1))
+    dt0 = datetime.datetime(year,1,1)
+    t0_s = fb.time_units_s.date2num(dt0)
+    dt1 = datetime.datetime(year+1,1,1)
+    t1_s = fb.time_units_s.date2num(dt1)
 
-
-    terminus_fjord = get_terminus_fjord(termini_file, terminus_id, bedmachine_file, tdir)
-
-    # Debug
-    with netCDF4.Dataset(bedmachine_file1, 'a') as nc:
-        ncv = nc.createVariable('terminus', 'i1', ('y','x'))
-        ncv[:] = terminus_fjord
 
     # ---------------------------------------------------------------
 
@@ -397,6 +399,7 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
         exception = None
     except Exception as e:
         print('********** Error: {}'.format(str(e)))
+        traceback.print_exc() 
         exception = e
     finally:
         output.close()
@@ -404,7 +407,15 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
     output_file4_tmp = tdir.filename()
     pismutil.fix_output(output_file3, exception, fb.time_units_s, output_file4_tmp)
 
-    add_analysis(output_file4_tmp, bedmachine_file1)
+
+    terminus_fjord = get_terminus_fjord(fb, termini_file, terminus_id, bedmachine_file1, tdir)
+    # Debug
+    with netCDF4.Dataset(bedmachine_file1, 'a') as nc:
+        ncv = nc.createVariable('terminus', 'i1', ('y','x'))
+        ncv[:] = terminus_fjord
+
+
+    add_analysis(output_file4_tmp, itime, dt0, dt1, bedmachine_file1, velocity_file, fb, terminus_fjord)
 
     # ------------------- Create final output file
     os.rename(output_file4_tmp, output_file4)
@@ -426,6 +437,9 @@ def main():
 
 #    compute(makefile,
 #        bedmachine_file, velocity_file, termini_file, termini_closed_file, otemplate).run()
-    do_retreat(bedmachine_file, velocity_file, termini_file, termini_closed_file, 'retreated.nc', sigma_max=1e5)
+
+
+    with ioutil.TmpDir() as tdir:
+        do_retreat(bedmachine_file, velocity_file, 2017, termini_file, termini_closed_file, 187, 'retreated.nc', tdir, sigma_max=1e5)
 
 main()
