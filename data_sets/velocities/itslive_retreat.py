@@ -13,7 +13,7 @@ import shapely.geometry
 from osgeo import ogr
 import shapely.ops
 import shapely.wkt, shapely.wkb
-from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil,flowfill,shputil,glaciers,cdoutil,bedmachine
+from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil,flowfill,shputil,glaciers,cdoutil,bedmachine,calfin
 import datetime
 import PISM
 from uafgi.pism import calving0
@@ -24,7 +24,6 @@ from scipy import signal
 import shapely.wkb
 import findiff
 from uafgi.pism import pismutil
-
 
 
 
@@ -79,7 +78,36 @@ class compute(object):
         pass
 
 
-def get_terminus_fjord(fb, termini_file, terminus_id, bedmachine_file, tdir):
+def get_fjord(fb, trough_file, bedmachine_file, tdir):
+    """
+    fb:
+        Result of cdoutil.FileInfo(), gives geometry
+    trough_file:
+        Name of shapefile containing the approximate trough of this
+        glacier (and none others).
+    bedmachine_file:
+    """
+
+    with netCDF4.Dataset(bedmachine_file) as nc:
+        bed = nc.variables['bed'][:]
+
+    # ----- Rasterize the approximate trough
+    approx_trough = next(shputil.rasterize_polygons(trough_file, [0], bedmachine_file, tdir))
+    print('approx_trough {}: {}'.format(trough_file, np.sum(np.sum(approx_trough))))
+
+    # Intersect the appxorimate trough with the below-sea-level areas.
+    # This gives the mask of
+    # points where we check to see ice added/removed
+    # during course of a run.
+    fjord = (bed < 0)
+    this_fjord = (np.logical_and(fjord, approx_trough != 0))
+
+    return this_fjord
+
+
+
+def get_terminus_fjord(fb, termini_file, terminus_id, bedmachine_file, tdir, distance_from_terminus=8000):
+
     """Finds areas of the fjord close to a terminus
     fb:
         Result of cdoutil.FileInfo(), gives geometry
@@ -92,8 +120,10 @@ def get_terminus_fjord(fb, termini_file, terminus_id, bedmachine_file, tdir):
     terminus_d = next(shputil.rasterize_polygons(termini_file, [terminus_id], bedmachine_file, tdir))
 
     # ------------ Find points close to the terminus trace
-    stencil = flowfill.disc_stencil(3000., (fb.dy, fb.dx))  # Distance from terminus
-    terminus_domain = (signal.convolve2d(terminus_d, stencil, mode='same') != 0)
+    stencil = flowfill.disc_stencil(distance_from_terminus, (fb.dy, fb.dx))  # Distance from terminus
+    # WARNING: THIS IS SLOW!!!
+#    terminus_domain = (signal.convolve2d(terminus_d, stencil, mode='same') != 0)
+    terminus_domain = (signal.fftconvolve2(terminus_d, stencil, mode='same') != 0)
     if np.sum(np.sum(terminus_domain)) == 0:
         raise ValueError('Nothing found in the domain, something is wrong...')
 
@@ -108,7 +138,7 @@ def get_terminus_fjord(fb, termini_file, terminus_id, bedmachine_file, tdir):
     return terminus_fjord
 
 
-def add_analysis(output_file4, itime, dt0, dt1, bedmachine_file1, velocity_file, fb, terminus_fjord):
+def add_analysis(output_file4, itime, dt0, dt1, bedmachine_file1, velocity_file, fb, fjord):
     """Analyzes the run and adds variables to the file with that analysis.
     output_file4:
         File to analyze
@@ -129,10 +159,10 @@ def add_analysis(output_file4, itime, dt0, dt1, bedmachine_file1, velocity_file,
 
     # Advance: Place starting with no ice, but now have ice
     where_advance = np.logical_and(thk0 == 0, thk1 != 0)
-    where_advance[np.logical_not(terminus_fjord)] = False
+    where_advance[np.logical_not(fjord)] = False
     # Retreat: Place starting with ice, not has no ice
     where_retreat = np.logical_and(thk0 != 0, thk1 == 0)
-    where_retreat[np.logical_not(terminus_fjord)] = False
+    where_retreat[np.logical_not(fjord)] = False
 
     # Total volume of advance / retreat
     adv = thk1.copy()
@@ -282,7 +312,7 @@ def add_analysis(output_file4, itime, dt0, dt1, bedmachine_file1, velocity_file,
         # ------------------- Concatenate in vars from the _bedmachine.nc file
         with netCDF4.Dataset(bedmachine_file1) as ncin:
             nccopy = ncutil.copy_nc(ncin, nc)
-            vnames = ('polar_stereographic', 'thickness', 'bed', 'terminus')
+            vnames = ('polar_stereographic', 'thickness', 'bed')
             nccopy.define_vars(vnames, zlib=True)
             for vname in vnames:
                 nccopy.copy_var(vname)
@@ -348,7 +378,7 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
     # Obtain start and end time in PISM units (seconds)
     dt0 = datetime.datetime(year,1,1)
     t0_s = fb.time_units_s.date2num(dt0)
-    dt1 = datetime.datetime(year+1,1,1)
+    dt1 = datetime.datetime(year,3,1)
     t1_s = fb.time_units_s.date2num(dt1)
 
 
@@ -404,18 +434,30 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
     finally:
         output.close()
 
+    print('AA2')
+
     output_file4_tmp = tdir.filename()
     pismutil.fix_output(output_file3, exception, fb.time_units_s, output_file4_tmp)
+    print('AA3')
 
 
-    terminus_fjord = get_terminus_fjord(fb, termini_file, terminus_id, bedmachine_file1, tdir)
+    cfn = calfin.ParseFilename(termini_file)
+    trough_file = os.path.join('data', 'troughs', cfn.glacier_name + '.shp')
+    # Reproject...
+    #ogr2ogr -f 'ESRI Shapefile' data/troughs/Rink-Isbrae.shp x.shp -t_srs EPSG:3413
+    # trough_file = 'x.shp'
+    fjord = get_fjord(fb, trough_file, bedmachine_file1, tdir)
+    print('AA4')
+
     # Debug
-    with netCDF4.Dataset(bedmachine_file1, 'a') as nc:
-        ncv = nc.createVariable('terminus', 'i1', ('y','x'))
-        ncv[:] = terminus_fjord
+    with netCDF4.Dataset(output_file4_tmp, 'a') as nc:
+        ncv = nc.createVariable('fjord', 'i1', ('y','x'), zlib=True)
+        ncv[:] = fjord
+    print('AA5')
 
 
-    add_analysis(output_file4_tmp, itime, dt0, dt1, bedmachine_file1, velocity_file, fb, terminus_fjord)
+    add_analysis(output_file4_tmp, itime, dt0, dt1, bedmachine_file1, velocity_file, fb, fjord)
+    print('AA6')
 
     # ------------------- Create final output file
     os.rename(output_file4_tmp, output_file4)
