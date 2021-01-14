@@ -13,7 +13,7 @@ import shapely.geometry
 from osgeo import ogr
 import shapely.ops
 import shapely.wkt, shapely.wkb
-from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil,flowfill,shputil,glaciers,cdoutil,bedmachine,calfin
+from uafgi import ioutil,ncutil,cfutil,argutil,make,geoutil,flowfill,shputil,glaciers,cdoutil,bedmachine,calfin,gdalutil
 import datetime
 import PISM
 from uafgi.pism import calving0
@@ -83,7 +83,7 @@ def get_fjord(fb, trough_file, bedmachine_file, tdir):
     fb:
         Result of cdoutil.FileInfo(), gives geometry
     trough_file:
-        Name of shapefile containing the approximate trough of this
+        Name of GeoJSON file containing the approximate trough of this
         glacier (and none others).
     bedmachine_file:
     """
@@ -92,7 +92,8 @@ def get_fjord(fb, trough_file, bedmachine_file, tdir):
         bed = nc.variables['bed'][:]
 
     # ----- Rasterize the approximate trough
-    approx_trough = next(shputil.rasterize_polygons(trough_file, [0], bedmachine_file, tdir))
+    approx_trough = gdalutil.rasterize_polygons(
+        ogr.GetDriverByName('GeoJSON').Open(trough_file), bedmachine_file)
     print('approx_trough {}: {}'.format(trough_file, np.sum(np.sum(approx_trough))))
 
     # Intersect the appxorimate trough with the below-sea-level areas.
@@ -351,13 +352,12 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
     kwargs = argutil.select_kwargs(kwargs0, default_kwargs)
 
     remover = glaciers.IceRemover2(bedmachine_file)
-    map_crs = cdoutil.FileInfo(bedmachine_file).crs
 
     # Get CRS out of shapefile
     termini_crs = shputil.crs(termini_file)
 
     # Get years out of velocity file
-    fb = cdoutil.FileInfo(velocity_file)
+    fb = gdalutil.FileInfo(velocity_file)
     years_ix = dict((dt.year,ix) for ix,dt in enumerate(fb.datetimes))
 
     # Run the glacier between timesteps
@@ -378,7 +378,8 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
     # Obtain start and end time in PISM units (seconds)
     dt0 = datetime.datetime(year,1,1)
     t0_s = fb.time_units_s.date2num(dt0)
-    dt1 = datetime.datetime(year,3,1)
+    dt1 = datetime.datetime(year+1,1,1)
+    #dt1 = datetime.datetime(year,1,3)
     t1_s = fb.time_units_s.date2num(dt1)
 
 
@@ -434,30 +435,23 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
     finally:
         output.close()
 
-    print('AA2')
-
     output_file4_tmp = tdir.filename()
     pismutil.fix_output(output_file3, exception, fb.time_units_s, output_file4_tmp)
-    print('AA3')
-
 
     cfn = calfin.ParseFilename(termini_file)
-    trough_file = os.path.join('data', 'troughs', cfn.glacier_name + '.shp')
+    trough_file = os.path.join('troughs', cfn.glacier_name + '.geojson')
+
     # Reproject...
     #ogr2ogr -f 'ESRI Shapefile' data/troughs/Rink-Isbrae.shp x.shp -t_srs EPSG:3413
-    # trough_file = 'x.shp'
     fjord = get_fjord(fb, trough_file, bedmachine_file1, tdir)
-    print('AA4')
 
     # Debug
     with netCDF4.Dataset(output_file4_tmp, 'a') as nc:
         ncv = nc.createVariable('fjord', 'i1', ('y','x'), zlib=True)
         ncv[:] = fjord
-    print('AA5')
 
 
     add_analysis(output_file4_tmp, itime, dt0, dt1, bedmachine_file1, velocity_file, fb, fjord)
-    print('AA6')
 
     # ------------------- Create final output file
     os.rename(output_file4_tmp, output_file4)
