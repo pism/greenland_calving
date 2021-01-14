@@ -334,11 +334,11 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
     """
 
     # Names of output files
-    output_file3 = os.path.splitext(output_file4)[0] + '.nc3'
+    #output_file3 = os.path.splitext(output_file4)[0] + '.nc3'
     output_shp = os.path.splitext(output_file4)[0] + '_advret.shp'
 
     if ofiles_only:
-        return [output_file3, output_shp]
+        return [output_file4, output_shp]
 
 
 #    # Check if the output already exists
@@ -387,6 +387,7 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
 
     print('============ Running year {}'.format(year))
     print('     ---> {}'.format(output_file3))
+    output_file3 = tdir.filename()
     try:
 
         # The append_time=True argument of prepare_output
