@@ -13,21 +13,16 @@ def main():
     # Create a blank makefile
     makefile = make.Makefile()
     # Things we want to keep
-    outputs = []
 
     # Merge the velocities into a single file
-    grid = 'W71.65N'
+    grid = 'W69.10N'
     grid_file = 'outputs/{}-grid.nc'.format(grid)
-    rule = itslive.merge_to_pism_rule(makefile, grid, grid_file,
-        'data/itslive/GRE_G0240_{}.nc', range(2011,2019), 'outputs').rule
-
-    outputs = rule.outputs
+    rule = itslive.merge_to_pism_rule(grid, grid_file,
+        'data/itslive/GRE_G0240_{}.nc', range(2011,2019), 'outputs')
+    targets = makefile.add(rule)
 
     # Build the outputs of that rule
-    make.build(makefile, outputs)
-
-    # Remove intermediate files
-    make.cleanup(makefile, rule.outputs)
+    make.build(makefile, targets)
 
 
 main()

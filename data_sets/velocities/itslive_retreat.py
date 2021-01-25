@@ -1,3 +1,4 @@
+import re
 import cf_units
 import bisect
 import sys,os,subprocess,traceback
@@ -24,7 +25,7 @@ from scipy import signal
 import shapely.wkb
 import findiff
 from uafgi.pism import pismutil
-
+import pandas as pd
 
 
 # -------------------------------------------------------------------
@@ -92,8 +93,9 @@ def get_fjord(fb, trough_file, bedmachine_file, tdir):
         bed = nc.variables['bed'][:]
 
     # ----- Rasterize the approximate trough
-    approx_trough = gdalutil.rasterize_polygons(
-        ogr.GetDriverByName('GeoJSON').Open(trough_file), bedmachine_file)
+    #polygon_ds = ogr.GetDriverByName('GeoJSON').Open(trough_file)
+    polygon_ds = gdalutil.open(trough_file, driver='GeoJSON')
+    approx_trough = gdalutil.rasterize_polygons(polygon_ds, bedmachine_file)
     print('approx_trough {}: {}'.format(trough_file, np.sum(np.sum(approx_trough))))
 
     # Intersect the appxorimate trough with the below-sea-level areas.
@@ -320,7 +322,7 @@ def add_analysis(output_file4, itime, dt0, dt1, bedmachine_file1, velocity_file,
 
 
 
-def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_closed_file, terminus_id, output_file4, tdir, ofiles_only=False, **kwargs0):
+def retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_closed_file, terminus_id, output_file, **pism_kwargs0):
     """
     bedmachine_file: <filename>
         Local bedmachine file extract
@@ -334,149 +336,238 @@ def do_retreat(bedmachine_file, velocity_file, year, termini_file, termini_close
     """
 
     # Names of output files
-    #output_file3 = os.path.splitext(output_file4)[0] + '.nc3'
-    output_shp = os.path.splitext(output_file4)[0] + '_advret.shp'
+    #output_file3 = os.path.splitext(output_file)[0] + '.nc3'
+    output_shp = os.path.splitext(output_file)[0] + '_advret.shp'
 
-    if ofiles_only:
-        return [output_file4, output_shp]
+    def action(tdir):
+#        # Check if the output already exists
+#        if os.path.exists(output_file):
+#            return
 
+        # Get total kwargs to use for PISM
+        default_kwargs = dict(calving0.FrontEvolution.default_kwargs.items())
+        default_kwargs['min_ice_thickness'] = 50.0
+        default_kwargs['sigma_max'] = 1e6
+        kwargs = argutil.select_kwargs(pism_kwargs0, default_kwargs)
 
-#    # Check if the output already exists
-#    if os.path.exists(output_file4):
-#        return
+        remover = glaciers.IceRemover2(bedmachine_file)
 
-    # Get total kwargs to use for PISM
-    default_kwargs = dict(calving0.FrontEvolution.default_kwargs.items())
-    default_kwargs['min_ice_thickness'] = 50.0
-    default_kwargs['sigma_max'] = 1e6
-    kwargs = argutil.select_kwargs(kwargs0, default_kwargs)
+        # Get CRS out of shapefile
+        termini_crs = shputil.crs(termini_file)
 
-    remover = glaciers.IceRemover2(bedmachine_file)
+        # Get years out of velocity file
+        fb = gdalutil.FileInfo(velocity_file)
+        years_ix = dict((dt.year,ix) for ix,dt in enumerate(fb.datetimes))
 
-    # Get CRS out of shapefile
-    termini_crs = shputil.crs(termini_file)
+        # Run the glacier between timesteps
+        # terminus_ix = 187    # Index in terminus file
+        itime = years_ix[year]    # Index in velocity file
 
-    # Get years out of velocity file
-    fb = gdalutil.FileInfo(velocity_file)
-    years_ix = dict((dt.year,ix) for ix,dt in enumerate(fb.datetimes))
+        # Prepare to store the output file
+        odir = os.path.split(output_file)[0]
+        if len(odir) > 0:
+            os.makedirs(odir, exist_ok=True)
 
-    # Run the glacier between timesteps
-    # terminus_ix = 187    # Index in terminus file
-    itime = years_ix[year]    # Index in velocity file
+        # Get ice thickness, adjusted for the present grounding line
+        thk = remover.get_thk(termini_closed_file, terminus_id, odir, tdir)
+        print('thk sum: {}'.format(np.sum(np.sum(thk))))
+        bedmachine_file1 = tdir.filename()
+        bedmachine.replace_thk(bedmachine_file, bedmachine_file1, thk)
 
-    # Prepare to store the output file
-    odir = os.path.split(output_file4)[0]
-    if len(odir) > 0:
-        os.makedirs(odir, exist_ok=True)
-
-    # Get ice thickness, adjusted for the present grounding line
-    thk = remover.get_thk(termini_closed_file, terminus_id, odir, tdir)
-    print('thk sum: {}'.format(np.sum(np.sum(thk))))
-    bedmachine_file1 = tdir.filename()
-    bedmachine.replace_thk(bedmachine_file, bedmachine_file1, thk)
-
-    # Obtain start and end time in PISM units (seconds)
-    dt0 = datetime.datetime(year,1,1)
-    t0_s = fb.time_units_s.date2num(dt0)
-    dt1 = datetime.datetime(year+1,1,1)
-    #dt1 = datetime.datetime(year,1,3)
-    t1_s = fb.time_units_s.date2num(dt1)
+        # Obtain start and end time in PISM units (seconds)
+        dt0 = datetime.datetime(year,1,1)
+        t0_s = fb.time_units_s.date2num(dt0)
+        #dt1 = datetime.datetime(year+1,1,1)
+        dt1 = datetime.datetime(year,4,1)
+        t1_s = fb.time_units_s.date2num(dt1)
 
 
-    # ---------------------------------------------------------------
+        # ---------------------------------------------------------------
 
-    print('============ Running year {}'.format(year))
-    print('     ---> {}'.format(output_file3))
-    output_file3 = tdir.filename()
-    try:
+        print('============ Running year {}'.format(year))
+        output_file3 = tdir.filename()
+        print('     ---> {}'.format(output_file3))
+        try:
 
-        # The append_time=True argument of prepare_output
-        # determines if after this call the file will contain
-        # zero (append_time=False) or one (append_time=True)
-        # records.
-        output = PISM.util.prepare_output(output_file3, append_time=False)
+            # The append_time=True argument of prepare_output
+            # determines if after this call the file will contain
+            # zero (append_time=False) or one (append_time=True)
+            # records.
+            output = PISM.util.prepare_output(output_file3, append_time=False)
 
-        #### I need to mimic this: Ross_combined.nc plus the script that made it
-        # Script in the main PISM repo, it's in examples/ross/preprocess.py
-        # bedmachine_file = "~/github/pism/pism/examples/ross/Ross_combined.nc"
-        # bedmachine_file = "Ross_combined.nc"
-        ctx = PISM.Context()
-        # TODO: Shouldn't this go in calving0.init_geometry()?
-        ctx.config.set_number("geometry.ice_free_thickness_standard", kwargs['min_ice_thickness'])
+            #### I need to mimic this: Ross_combined.nc plus the script that made it
+            # Script in the main PISM repo, it's in examples/ross/preprocess.py
+            # bedmachine_file = "~/github/pism/pism/examples/ross/Ross_combined.nc"
+            # bedmachine_file = "Ross_combined.nc"
+            ctx = PISM.Context()
+            # TODO: Shouldn't this go in calving0.init_geometry()?
+            ctx.config.set_number("geometry.ice_free_thickness_standard", kwargs['min_ice_thickness'])
 
-        grid = calving0.create_grid(ctx.ctx, bedmachine_file1, "thickness")
-        geometry = calving0.init_geometry(grid, bedmachine_file1, kwargs['min_ice_thickness'])
+            grid = calving0.create_grid(ctx.ctx, bedmachine_file1, "thickness")
+            geometry = calving0.init_geometry(grid, bedmachine_file1, kwargs['min_ice_thickness'])
 
-        ice_velocity = calving0.init_velocity(grid, velocity_file)
-        print('ice_velocity sum: '.format(np.sum(np.sum(ice_velocity))))
+            ice_velocity = calving0.init_velocity(grid, velocity_file)
+            print('ice_velocity sum: '.format(np.sum(np.sum(ice_velocity))))
 
-        # NB: For debugging I might use a low value of sigma_max to make SURE things retreat
-        # default_kwargs = dict(
-        #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
-        fe_kwargs = dict(sigma_max=0.1e6)
-        front_evolution = calving0.FrontEvolution(grid, sigma_max=kwargs['sigma_max'])
+            # NB: For debugging I might use a low value of sigma_max to make SURE things retreat
+            # default_kwargs = dict(
+            #     ice_softness=3.1689e-24, sigma_max=1e6, max_ice_speed=5e-4)
+            fe_kwargs = dict(sigma_max=0.1e6)
+            front_evolution = calving0.FrontEvolution(grid, sigma_max=kwargs['sigma_max'])
 
-        # ========== ************ DEBUGGING *****************
-        #xout = PISM.util.prepare_output('x.nc', append_time=False)
-        #PISM.append_time(xout, front_evolution.config, 17)
-        #geometry.ice_thickness.write(xout)
-        #geometry.cell_type.write(xout)
+            # ========== ************ DEBUGGING *****************
+            #xout = PISM.util.prepare_output('x.nc', append_time=False)
+            #PISM.append_time(xout, front_evolution.config, 17)
+            #geometry.ice_thickness.write(xout)
+            #geometry.cell_type.write(xout)
     
 
-        # Iterate through portions of (dt0,dt1) with constant velocities
-        ice_velocity.read(velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
-        front_evolution(geometry, ice_velocity,
-           t0_s, t1_s,
-           output=output)
-        exception = None
-    except Exception as e:
-        print('********** Error: {}'.format(str(e)))
-        traceback.print_exc() 
-        exception = e
-    finally:
-        output.close()
+            # Iterate through portions of (dt0,dt1) with constant velocities
+            ice_velocity.read(velocity_file, itime)   # 0 ==> first record of that file (if time-dependent)
+            front_evolution(geometry, ice_velocity,
+               t0_s, t1_s,
+               output=output)
+            exception = None
+        except Exception as e:
+            print('********** Error: {}'.format(str(e)))
+            traceback.print_exc() 
+            exception = e
+        finally:
+            output.close()
 
-    output_file4_tmp = tdir.filename()
-    pismutil.fix_output(output_file3, exception, fb.time_units_s, output_file4_tmp)
+        output_file_tmp = tdir.filename()
+        pismutil.fix_output(output_file3, exception, fb.time_units_s, output_file_tmp)
 
-    cfn = calfin.ParseFilename(termini_file)
-    trough_file = os.path.join('troughs', cfn.glacier_name + '.geojson')
+        cfn = calfin.ParseFilename(termini_file)
+        trough_file = os.path.join('troughs', cfn.glacier_name + '.geojson')
 
-    # Reproject...
-    #ogr2ogr -f 'ESRI Shapefile' data/troughs/Rink-Isbrae.shp x.shp -t_srs EPSG:3413
-    fjord = get_fjord(fb, trough_file, bedmachine_file1, tdir)
+        # Reproject...
+        #ogr2ogr -f 'ESRI Shapefile' data/troughs/Rink-Isbrae.shp x.shp -t_srs EPSG:3413
+        fjord = get_fjord(fb, trough_file, bedmachine_file1, tdir)
 
-    # Debug
-    with netCDF4.Dataset(output_file4_tmp, 'a') as nc:
-        ncv = nc.createVariable('fjord', 'i1', ('y','x'), zlib=True)
-        ncv[:] = fjord
+        with netCDF4.Dataset(output_file_tmp, 'a') as nc:
+            # Debug
+            ncv = nc.createVariable('fjord', 'i1', ('y','x'), zlib=True)
+            ncv[:] = fjord
 
-
-    add_analysis(output_file4_tmp, itime, dt0, dt1, bedmachine_file1, velocity_file, fb, fjord)
-
-    # ------------------- Create final output file
-    os.rename(output_file4_tmp, output_file4)
-
-
+            # Add parameter info
+            nc.creator = 'itslive_retreat.py'
+            nc.year = year
+            for key,val in pism_kwargs0.items():
+                nc.setncattr(key,val)
 
 
+        # add_analysis(output_file_tmp, itime, dt0, dt1, bedmachine_file1, velocity_file, fb, fjord)
 
-def main():
+        # Add parameter info
+
+
+        # ------------------- Create final output file
+        os.rename(output_file_tmp, output_file)
+
+    return make.Rule(action,
+        [bedmachine_file, velocity_file, termini_file, termini_closed_file],
+        [output_file, output_shp])
+
+def read_retreat(fname):
+    row = dict()
+    with ncutil.open(fname) as nc:
+        fb = gdalutil.FileInfo(fname)
+        dyx_area = fb.dx*fb.dy
+
+        nctime = nc.variables['time']
+        times = cf_units.Unit(nctime.units, calendar=nctime.calendar).num2date(nctime[:])
+        fjord = nc.variables['fjord'][:]
+        thk0 = nc.variables['thk'][0,:,:]
+
+        rows = list()
+        for itime in range(0,len(times)):
+            row = {'year': nc.year, 'sigma_max': nc.sigma_max, 'time': times[itime]}
+            thk1 = nc.variables['thk'][itime,:,:]
+
+            # Advance: Place starting with no ice, but now have ice
+            where_advance = np.logical_and(thk0 == 0, thk1 != 0)
+            where_advance[np.logical_not(fjord)] = False
+            row['adv_area'] = np.sum(where_advance) * dyx_area
+
+            # Retreat: Place starting with ice, now has no ice
+            where_retreat = np.logical_and(thk0 != 0, thk1 == 0)
+            where_retreat[np.logical_not(fjord)] = False
+            row['ret_area'] = np.sum(where_retreat) * dyx_area
+
+            print(row)
+            rows.append(row)
+    return rows
+        
+
+def main_analyze(dir, prefix, nsidc):
+    str = r'{}_{}_(.*)_(.*)_retreat\.nc'.format(prefix,nsidc)
+    print('Re: {}'.format(str))
+    fileRE = re.compile(str)
+    years = list()
+    leaves = list()
+    for leaf in os.listdir(dir):
+        match = fileRE.match(leaf)
+        if match is None:
+            continue
+        year = int(match.group(1))
+        years.append(year)
+        leaves.append(leaf)
+
+    dfi = pd.DataFrame({'year': years, 'leaf': leaves}).sort_values(['year','leaf'])
+    dfig = dfi.groupby(['year'])
+
+    for year,dfg in dfig:
+        print('processing ', year)
+        rows = list()
+        for leaf in dfg['leaf'].values:
+            print('  --> ', year,leaf)
+            fname = os.path.join(dir, leaf)
+            rows += read_retreat(fname)
+
+        df = pd.DataFrame(rows)
+        df.to_pickle('retreats_{}.pik'.format(year))
+        print(df)
+
+def main_runcalc(calfin_name, terminus_index):
+    df = glaciers.info_df
+    glacier = glaciers.by_calfin(calfin_name)
+
     makefile = make.Makefile()
-    bedmachine_file = 'outputs/BedMachineGreenland-2017-09-20_pism_W71.65N.nc'
+    bedmachine_file = 'outputs/BedMachineGreenland-2017-09-20_pism_{}.nc'.format(glacier.nsidc)
 #    velocity_file = 'outputs/TSX_W71.65N_2008_2020_filled.nc'
-    velocity_file = 'outputs/GRE_G0240_W71.65N_2011_2018.nc'
+    print('xxxxxxx nsidc "{}"'.format(glacier.nsidc[0]))
+    velocity_file = 'outputs/GRE_G0240_{}_2011_2018.nc'.format(glacier.nsidc)
 
-    # Use terminus #187
-    termini_file = 'data/calfin/domain-termini/termini_1972-2019_Rink-Isbrae_v1.0.shp'
-    termini_closed_file = 'data/calfin/domain-termini-closed/termini_1972-2019_Rink-Isbrae_closed_v1.0.shp'
-    otemplate = 'outputs/retreat_calfin_W71.65N_{dt0}_{dt1}/data.nc'
-
-#    compute(makefile,
-#        bedmachine_file, velocity_file, termini_file, termini_closed_file, otemplate).run()
+    termini_file = 'data/calfin/domain-termini/termini_1972-2019_{}_v1.0.shp'.format(glacier.calfin)
+    termini_closed_file = 'data/calfin/domain-termini-closed/termini_1972-2019_{}_closed_v1.0.shp'.format(glacier.calfin)
+    odir = 'outputs'
 
 
-    with ioutil.TmpDir() as tdir:
-        do_retreat(bedmachine_file, velocity_file, 2017, termini_file, termini_closed_file, 187, 'retreated.nc', tdir, sigma_max=1e5)
+    # Print out the filenames
+    print('---------------------------------------- Filenames')
+    print(bedmachine_file)
+    print(velocity_file)
+    print(termini_file)
+    print(termini_closed_file)
 
-main()
+    targets = list()
+#    for year in range(2011, 2019):
+    for year in range(2011, 2019):
+        for sigma_max in list(np.arange(1e5,5.2e5,.2e5)):
+            ssigma_max = '{:03d}'.format(int(round(sigma_max / 1e4)))
+
+            idir,ileaf = os.path.split(velocity_file)
+            match = re.match(r'(.*)_(\d\d\d\d)_(\d\d\d\d)\.nc', ileaf)
+            output_file = os.path.join(odir, '{}_{}_sig{}_retreat.nc'.format(match.group(1), year, ssigma_max))
+
+            rule = retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_closed_file, terminus_index, output_file, sigma_max=sigma_max)
+            targets += makefile.add(rule)
+
+    make.build(makefile, targets)
+
+#main_analyze('outputs', 'GRE_G0240', r'W71\.65N')
+#main_runcalc('Rink-Isbrae', 187)
+main_runcalc('Jakobshavn-Isbrae', 418)
+
+
