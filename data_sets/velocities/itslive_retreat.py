@@ -322,7 +322,7 @@ def add_analysis(output_file4, itime, dt0, dt1, bedmachine_file1, velocity_file,
 
 
 
-def retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_closed_file, terminus_id, output_file, **pism_kwargs0):
+def retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_closed_file, terminus_id, terminus_closed_id, output_file, **pism_kwargs0):
     """
     bedmachine_file: <filename>
         Local bedmachine file extract
@@ -337,7 +337,7 @@ def retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_clo
 
     # Names of output files
     #output_file3 = os.path.splitext(output_file)[0] + '.nc3'
-    output_shp = os.path.splitext(output_file)[0] + '_advret.shp'
+    #output_shp = os.path.splitext(output_file)[0] + '_advret.shp'
 
     def action(tdir):
 #        # Check if the output already exists
@@ -369,7 +369,7 @@ def retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_clo
             os.makedirs(odir, exist_ok=True)
 
         # Get ice thickness, adjusted for the present grounding line
-        thk = remover.get_thk(termini_closed_file, terminus_id, odir, tdir)
+        thk = remover.get_thk(termini_closed_file, terminus_closed_id, odir, tdir)
         print('thk sum: {}'.format(np.sum(np.sum(thk))))
         bedmachine_file1 = tdir.filename()
         bedmachine.replace_thk(bedmachine_file, bedmachine_file1, thk)
@@ -394,6 +394,9 @@ def retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_clo
             # zero (append_time=False) or one (append_time=True)
             # records.
             output = PISM.util.prepare_output(output_file3, append_time=False)
+
+            # TODO: Add a time_units and calendar argument to prepare_output()
+            # https://github.com/pism/pism/commit/1cd1719189f1155bf56b4488338f1d6e53c29659
 
             #### I need to mimic this: Ross_combined.nc plus the script that made it
             # Script in the main PISM repo, it's in examples/ross/preprocess.py
@@ -467,69 +470,10 @@ def retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_clo
 
     return make.Rule(action,
         [bedmachine_file, velocity_file, termini_file, termini_closed_file],
-        [output_file, output_shp])
+        [output_file])
 
-def read_retreat(fname):
-    row = dict()
-    with ncutil.open(fname) as nc:
-        fb = gdalutil.FileInfo(fname)
-        dyx_area = fb.dx*fb.dy
 
-        nctime = nc.variables['time']
-        times = cf_units.Unit(nctime.units, calendar=nctime.calendar).num2date(nctime[:])
-        fjord = nc.variables['fjord'][:]
-        thk0 = nc.variables['thk'][0,:,:]
-
-        rows = list()
-        for itime in range(0,len(times)):
-            row = {'year': nc.year, 'sigma_max': nc.sigma_max, 'time': times[itime]}
-            thk1 = nc.variables['thk'][itime,:,:]
-
-            # Advance: Place starting with no ice, but now have ice
-            where_advance = np.logical_and(thk0 == 0, thk1 != 0)
-            where_advance[np.logical_not(fjord)] = False
-            row['adv_area'] = np.sum(where_advance) * dyx_area
-
-            # Retreat: Place starting with ice, now has no ice
-            where_retreat = np.logical_and(thk0 != 0, thk1 == 0)
-            where_retreat[np.logical_not(fjord)] = False
-            row['ret_area'] = np.sum(where_retreat) * dyx_area
-
-            print(row)
-            rows.append(row)
-    return rows
-        
-
-def main_analyze(dir, prefix, nsidc):
-    str = r'{}_{}_(.*)_(.*)_retreat\.nc'.format(prefix,nsidc)
-    print('Re: {}'.format(str))
-    fileRE = re.compile(str)
-    years = list()
-    leaves = list()
-    for leaf in os.listdir(dir):
-        match = fileRE.match(leaf)
-        if match is None:
-            continue
-        year = int(match.group(1))
-        years.append(year)
-        leaves.append(leaf)
-
-    dfi = pd.DataFrame({'year': years, 'leaf': leaves}).sort_values(['year','leaf'])
-    dfig = dfi.groupby(['year'])
-
-    for year,dfg in dfig:
-        print('processing ', year)
-        rows = list()
-        for leaf in dfg['leaf'].values:
-            print('  --> ', year,leaf)
-            fname = os.path.join(dir, leaf)
-            rows += read_retreat(fname)
-
-        df = pd.DataFrame(rows)
-        df.to_pickle('retreats_{}.pik'.format(year))
-        print(df)
-
-def main_runcalc(calfin_name, terminus_index):
+def main_runcalc(calfin_name, terminus_index, terminus_closed_index):
     df = glaciers.info_df
     glacier = glaciers.by_calfin(calfin_name)
 
@@ -561,13 +505,11 @@ def main_runcalc(calfin_name, terminus_index):
             match = re.match(r'(.*)_(\d\d\d\d)_(\d\d\d\d)\.nc', ileaf)
             output_file = os.path.join(odir, '{}_{}_sig{}_retreat.nc'.format(match.group(1), year, ssigma_max))
 
-            rule = retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_closed_file, terminus_index, output_file, sigma_max=sigma_max)
+            rule = retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_closed_file, terminus_index, terminus_closed_index, output_file, sigma_max=sigma_max)
             targets += makefile.add(rule)
 
     make.build(makefile, targets)
 
-#main_analyze('outputs', 'GRE_G0240', r'W71\.65N')
-#main_runcalc('Rink-Isbrae', 187)
-main_runcalc('Jakobshavn-Isbrae', 418)
-
+#main_runcalc('Rink-Isbrae', 187, 187)
+main_runcalc('Jakobshavn-Isbrae', 480, 289)    # terminus iD 
 
