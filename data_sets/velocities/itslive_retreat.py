@@ -508,8 +508,12 @@ def main_runcalc(calfin_name, terminus_index, terminus_closed_index):
             rule = retreat_rule(bedmachine_file, velocity_file, year, termini_file, termini_closed_file, terminus_index, terminus_closed_index, output_file, sigma_max=sigma_max)
             targets += makefile.add(rule)
 
-    make.build(makefile, targets)
+#    make.build(makefile, targets)
+    makefile.generate(targets, 'itslive_retreat.mk')
 
-#main_runcalc('Rink-Isbrae', 187, 187)
-main_runcalc('Jakobshavn-Isbrae', 480, 289)    # terminus iD 
+def main():
+    #main_runcalc('Rink-Isbrae', 187, 187)
+    main_runcalc('Jakobshavn-Isbrae', 480, 289)    # terminus iD 
+
+#main()
 
