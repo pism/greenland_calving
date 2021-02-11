@@ -1,9 +1,10 @@
+import sys
 import numpy as np
 import os
 import re
 import pandas as pd
 import pyproj
-from uafgi import gdalutil,ogrutil
+from uafgi import gdalutil,ogrutil,shputil
 from uafgi.nsidc import nsidc0481
 import shapely
 import shapely.geometry
@@ -87,42 +88,54 @@ def select_glaciers():
                 String used as label in QGis
     """
 
-    df = pd.read_pickle('data/GreenlandGlacierStats/GreenlandGlacierStats.pik')
+    stats0 = pd.read_pickle('data/GreenlandGlacierStats/GreenlandGlacierStats.pik')
 
     # Select glaciers with fjord width between 2 and 4 km
-    df = df[(df['mean_fjord_width'] >=2) & (df['mean_fjord_width'] <= 4)]
+    stats = stats0[(stats0['mean_fjord_width'] >=2) & (stats0['mean_fjord_width'] <= 4)]
 
     # Categorize by different regions / glacier types
-    dfg = df.groupby(['coast', 'category'])
+    dfg = stats.groupby(['coast', 'category'])
 
     # Select glacier with maximum mean discharge in each category
     # https://stackoverflow.com/questions/32459325/python-pandas-dataframe-select-row-by-max-value-in-group?noredirect=1&lq=1
     selections = dfg.apply(lambda group: group.nlargest(1, columns='mean_discharge')).reset_index(drop=True)
 
+    # ------------------ Manual changes to the list
+    # Add additional glaciers
+    adds = {
+        'Skinfaxe Gl.',    # Replaces Rimfaxe
 
-    # --------------------------------------------------------
-    # Load name and location dataframes
-    ddir = 'data/GreenlandGlacierNames/'
+        # Andy Aschwanden  6:00 PM Feb 9, 2021
+        #
+        # I wonder if there is some benefit to stick with glaciers
+        # that are covered by MEASUReS? E.g. if we later want to
+        # revisit our approach, or we decide to average MEASUReS
+        # velocities.  Also, we should include the usual suspects:
+        # Helheim, Kangerdlugssuaq, Rink, Store, Upernavik Isstrom
+        # N,C,S, Jakobshavn (even if only used as an example for
+        # things that don't work)
+        'Helheim Gl.', 'Kangerlussuaq Gl.', 'Rink Isbrae', 'Store Gl.',
+        'Upernavik Isstrom N',
+        'Upernavik Isstrom C',
+        'Upernavik Isstrom S',
+        'Jakobshavn Isbrae',
+        'Kong Oscar Gl.',
+    }
+    selections = pd.concat([
+        selections,
+        stats0.loc[stats0.popular_name.isin(adds)]
+        ]).drop_duplicates()
 
+    # Remove some glaciers, one-off
+    removes = {
+        'Rimfaxe Gl.',   # No NSIDC-0481 grid coverage; nearby similar glaciers
+        'Upernavik Isstrom SS',    # We already have 3 other Upernavik Isstrom; duplicate of Upernavik Isstrom S?
+        'Sermeq Avannarleq',    # Doesn't seeem to really be marine terminating
+    }
+    selections = selections[~selections.popular_name.isin(removes)].reset_index()
 
-    # ---------- Left join by popular_name to get ID
-    names1 = pd.read_csv(os.path.join(ddir, 'glacier_names_ext.csv')) \
-        .rename(columns={'name': 'popular_name'})
-    selections = pd.merge(
-        selections, names1, how='left', on=['popular_name','coast'])
-
-    # ---------- Left outer join to get location
-    nameloc0 = pd.read_csv(os.path.join(ddir, 'tc-9-2215-2015-supplement.csv'))
-    locs1 = pd.read_csv(os.path.join(ddir, 'glacier_locations_ext.csv'))
-
-    # Concat both dataframes together to get a master ID->location table
-    loc = pd.concat([
-        nameloc0[['ID','LAT','LON']].rename(columns={'LAT':'lat', 'LON':'lon'}),
-        locs1])
-    selections = pd.merge(
-        selections, loc, on=['ID'], how='left') \
-        .drop(['popular_name_y'], axis=1) \
-        .rename(columns={'popular_name_x' : 'popular_name'})
+#    print(selections[['popular_name','greenlandic_name','coast', 'category']])
+#    return
 
     # ----------------------------------------------------------
     # Load dataset of grids.  Use first grid globally
@@ -139,40 +152,102 @@ def select_glaciers():
     map_wkt = gdf.loc[0].wkt
     map_crs = pyproj.CRS.from_string(map_wkt)
 
-    # ----------------------------------------------------------
-    # Project the glacier "location" points into map_wkt
-    # Glacier points are in lat/lon
-    proj = pyproj.Transformer.from_crs(wgs84,map_crs,always_xy=True)
+    proj_wgs84 = pyproj.Transformer.from_crs(wgs84,map_crs,always_xy=True)
+
+    # --------------------------------------------------------
+    # Load name and location dataframes
+    ddir = 'data/GreenlandGlacierNames/'
+
+
+    # ---------- Left join by popular_name to get ID
+    names1 = pd.read_csv(os.path.join(ddir, 'glacier_names_ext.csv')) \
+        .rename(columns={'name': 'popular_name'})
+    selections = pd.merge(
+        selections, names1, how='left', on=['popular_name','coast'])
+
+    # ---------- Read external database of glacier locations and names
+    nameloc0 = pd.read_csv(os.path.join(ddir, 'tc-9-2215-2015-supplement.csv'))
+
+    # Project the terminus location points into map_wkt
     locations = pd.Series(
-        index=selections.index,
+        index=nameloc0.index,
         data=[shapely.geometry.Point(x,y) for x,y in zip(
-            *proj.transform(selections.lon.tolist(), selections.lat.tolist()))]
+            *proj_wgs84.transform(nameloc0.LON.tolist(), nameloc0.LAT.tolist()))]
         )
+    nameloc0['terminus_location'] = locations
 
+    # --------------------------------------------------------
+    # Supplemental name and location database
+    locs1 = \
+        pd.DataFrame(
+            shputil.read('troughs/shp/terminus_locations.shp', map_wkt)) \
+        .rename(columns={'_shape0' : 'terminus_location_lonlat', '_shape' : 'terminus_location', 'popname' : 'popular_name'})
+#    print(locs1.columns)
+    locs1['lat'] = locs1['terminus_location_lonlat'].map(lambda p: p.y)
+    locs1['lon'] = locs1['terminus_location_lonlat'].map(lambda p: p.x)
+    locs1 = locs1.drop('terminus_location_lonlat', axis=1)
 
-    # Load the fjord for each glacier (project into map transform)
+    # -------------------------------------------------------------
+    # Concat both dataframes together to get a master ID->location table
+    loc = pd.concat([
+        nameloc0[['ID', 'LAT', 'LON', 'terminus_location']].rename(columns={'LAT':'lat', 'LON':'lon'}),
+        locs1])
+
+    selections = pd.merge(
+        selections, loc, on=['ID'], how='left') \
+        .drop(['popular_name_y'], axis=1) \
+        .rename(columns={'popular_name_x' : 'popular_name'}) \
+        .drop('index', axis=1)
+
+    # Stop if there are any selections missing an ID
+    missing = selections[selections['ID'].isna()]
+    if len(missing) > 0:
+        print('=========== Missing IDs:')
+        print(missing[['popular_name','greenlandic_name','coast', 'category']])
+        print('Remedy by fixing the file troughs/shp/terminus_locations.shp and/or data/GreenlandGlacierNames/glacier_names_ext.csv')
+        sys.exit(-1)
+
+    # ----------------------------------------------------------
+    # Load the fjord for each glacier (and project into map transform)
     fjords = load_fjords(map_wkt)    # list
 
-    selections = selections.join(polys_overlapping_points(locations, fjords, fjords, poly_label='fjord'))
-    #print(selections.columns)
+    pop = polys_overlapping_points(selections.terminus_location, fjords, fjords, poly_label='fjord')
+
+    selections = selections.join(pop)
+
+    # Write out to file for QGIS; so user can add fjords if needed.
+    selq = selections[['ID', 'popular_name', 'lat', 'lon']]
+    
+    print('--------- BEGIN selq; ignore the warning for now?')
+    selq['label'] = selq['ID'].str.cat(selq['popular_name'].fillna('X'),sep=':')
+    selq = selq.set_index('ID')
+    selq.to_csv('selections_qgis.csv')
+    print('--------- END selq')
+
+    # Stop if there are any selections missing a fjord
+    missing = selections[selections['fjord'].isna()]
+    if len(missing) > 0:
+        print('=========== Missing fjord outlines:')
+        print(missing[['popular_name','greenlandic_name','coast', 'category']])
+        print('Remedy by fixing troughs/shp/terminus_locations.shp (in QGIS), based on selections_qgis.csv')
+        sys.exit(-1)
 
 
     # ----------------------------------------------------------
     # Determine the NSIDC grid for each glacier
     rows = list()
+    locations = selections['terminus_location']
     for grid_poly,grid_name in zip(gdf.poly.to_list(), gdf.grid.to_list()):
         intersects = locations[locations.map(lambda p: grid_poly.intersects(p))]
         for ix in intersects.index.tolist():
             rows.append((ix, grid_name, grid_poly))
-    grids = pd.DataFrame(rows, columns=['ix', 'grid', 'grid_poly']) \
+
+    glacier_grids = pd.DataFrame(rows, columns=['ix', 'grid', 'grid_poly']) \
         .set_index(keys='ix', drop=True) \
         .sort_index()
 
     # Join back with selections (sometimes >1 grid available per glacier)
-    selections = selections.join(grids).reset_index()
-    #print(selections.index)
-    #print(selections.grid_poly)
-    #print(selections.columns)
+    selections = selections.join(glacier_grids).reset_index()
 
     # ----------------------------------------------------------
     # Determine area of overlap of fjord with grid domain
@@ -187,58 +262,57 @@ def select_glaciers():
     df = pd.concat([fjord_area, overlaps, (overlaps / fjord_area).rename('opct')], axis=1)
 
     selections = selections.join(df)
-    sel = selections[['popular_name','grid','fjord_area','overlap','opct']]
-#    sel = sel[sel['grid'].notna()]
-    print(sel)
 
-#    print(grids)
+    # -------------------------------------------------------
+    # Remove glaciers that can't be located on an NSIDC-0481 grid
+    selections = selections[selections['opct'] != 0.0]
 
-    return
+    # -------------------------------------------------------
+    # Choose a grid for glaciers with multiple grids
+    # Use that to eliminate duplicates
+    grid_override = pd.DataFrame(
+        data=[
+            ('GGN0295','Kangilleq','W70.90N'),
+            ('NORD001','Nordenskiold Gl. N','W75.85N')],
+        columns=['ID','popular_name','grid_override'])
 
-    # ----------------------------------------------------------
-    # Determine the NSIDC grid for each glacier
+    selections = pd.merge(
+        selections, grid_override, on=['ID'], how='left') \
+        .rename(columns={'popular_name_x' : 'popular_name'}) \
+        .drop(['popular_name_y', 'index'], axis=1)
 
-    # Load the grids 
-    grids_s = list()
-    for index, row in gdf.iterrows():
+    # Eliminate duplicate grids; drop the non-preferred grid
+    selections = selections[
+        (selections.grid_override == selections.grid) | selections.grid_override.isna()]
 
-        # Transform glacier terminus locations to this grid's projection
-        local = pyproj.CRS.from_string(row['wkt'])
-        proj = pyproj.Transformer.from_crs(wgs84,local,always_xy=True)
-        projected_points = pd.Series(
-            index=selections.index,
-            data=[shapely.geometry.Point(x,y) for x,y in zip(
-                *proj.transform(selections.lon.tolist(), selections.lat.tolist()))]
-            )
+    # Check if any duplicated rows remain
+    dup = selections.duplicated(subset='ID', keep=False)
+    # Keep only "True" rows
+    dup = dup[dup]
 
-        # Find intersections between terminus locations and this grid
-        # NOTE: intersects includes selections.index
-        intersects = projected_points[projected_points.map(lambda p: row['poly'].intersects(p))]
-
-        grids_s.append(pd.Series(index=intersects.index, data=[row['grid']] * len(intersects),name='grid'))
-
-    grids = pd.concat(grids_s, axis=0)
-
-
-
-
-    # ----------------------------------------------------------
-
-    # Write out file for QGis
-    selq = selections[['ID', 'popular_name', 'lat', 'lon']]
-    selq['label'] = selq['ID'].str.cat(selq['popular_name'].fillna('X'),sep=':')
-    selq = selq.set_index('ID')
+    # Check that no glaciers have duplicated grid
+    if len(dup) > 0:
+        print('=========== Glaciers with duplicate grids:')
+        # Index out of selections based on dup
+        print(selections.loc[dup.index][['ID', 'popular_name', 'coast', 'grid', 'opct']])
+        print('Remedy by updating the grid_override variable in select_glaciers.py')
+        sys.exit(-1)
 
 
-    return selections, selq
+    # Print for good measure
+    print('============= Resulting Selections')
+    print(selections[['ID', 'popular_name', 'coast', 'grid', 'opct']].sort_values('grid'))
 
+
+    return selections
 
 def select_glaciers_main():
-    selections,selq = select_glaciers()
+    selections = select_glaciers()
 
     # Write out selections
-    selections.to_pickle('selections.df')
-    selq.to_csv('selections_qgis.csv')
+    fname = 'selections.df'
+    print('...saving to {}'.format(fname))
+    selections.to_pickle(fname)
 
 # ====================================================================
 
@@ -246,6 +320,3 @@ def select_glaciers_main():
 
 
 select_glaciers_main()
-
-#fjords = load_fjords('PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",SOUTH],AXIS["Northing",SOUTH],AUTHORITY["EPSG","3413"]]')
-print(fjords)
