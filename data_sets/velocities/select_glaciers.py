@@ -10,65 +10,46 @@ import shapely
 import shapely.geometry
 from osgeo import ogr,osr
 
-def load_fjords(dest_crs_wkt):
+
+
+
+def select_glaciers(w21, w21_blackouts=None):
+    """w21_blackouts:
+        DataFrame with index matching w21, cols do not matter; rows we do NOT want to select.
     """
-    dest_crs_wkt:
-        WKT of the desination coordinate system.
-    """
+    glaciers = w21.df.copy()
 
-    driver = ogr.GetDriverByName('ESRI Shapefile')
-    src_ds = driver.Open('troughs/shp/fjord_outlines.shp')
-    src_lyr = src_ds.GetLayer()   # Put layer number or name in her
-    src_srs = src_lyr.GetSpatialRef()
-    dst_srs = osr.SpatialReference()
-    dst_srs.ImportFromWkt(dest_crs_wkt)
-    transform = osr.CoordinateTransformation(src_srs, dst_srs)
+    if w21_blackouts is not None:
+        # Get the original w21.df's index onto the blackouts list
+        blackouts_index= pd.merge(w21.df.reset_index(), w21_blackouts, how='inner', on='w21_key').set_index('index').index
 
-    fjords_s = list()
-    if True:
-        while True:
-            feat = src_lyr.GetNextFeature()
-            if feat is None:
-                break
-            poly = ogrutil.to_shapely_polygon(feat,transform)
+        # Remove items we previously decided we DID NOT want to select
+        glaciers = glaciers.drop(blackouts_index, axis=0)
 
-            fjords_s.append(poly)
+    # Select glaciers with fjord width between 2km and 4km
+    glaciers = glaciers[(glaciers['w21_mean_fjord_width'] >=2) & (glaciers['w21_mean_fjord_width'] <= 4)]
 
-    return fjords_s
-#    fjords = pd.Series(name='fjords',data=fjords_s)
-#    return fjords
+    # Categorize by different regions / glacier types
+    dfg = glaciers.groupby(['w21_coast', 'w21_category'])
+
+    # Select glacier with maximum mean discharge in each category
+    # https://stackoverflow.com/questions/32459325/python-pandas-dataframe-select-row-by-max-value-in-group?noredirect=1&lq=1
+    select = dfg.apply(lambda group: group.nlargest(1, columns='w21_mean_discharge')).reset_index(drop=True)
+    #print(select)
+    #print(select.loc[1])
+    return w21.replace(df=select)
 
 
-def polys_overlapping_points(points_s, polys, poly_outs, poly_label='poly'):
 
-    """Given a list of points and polygons... finds which polygons overlap
-    each point.
 
-    points_s: pd.Series(shapely.geometry.Point)
-        Pandas Series containing the Points (with index)
-    polys: [poly, ...]
-        List of shapely.geometry.Polygon
-    poly_outs: [x, ...]
-        Item to place in resulting DataFrame in place of the Polygon.
-        Could be the same as the polygon.
 
-    """
 
-    # Load the grids 
-    out_s = list()
-    for poly,poly_out in zip(polys,poly_outs):
 
-        # Find intersections between terminus locations and this grid
-        # NOTE: intersects includes selections.index
-        intersects = points_s[points_s.map(lambda p: poly.intersects(p))]
 
-        out_s.append(pd.Series(index=intersects.index, data=[poly_out] * len(intersects),name=poly_label))
-
-    grids = pd.concat(out_s, axis=0)
-    return grids
 
 
 def select_glaciers():
+
     """Selects a set of glaciers for stability analysis.
     Initial set: just one from each region / category.
 
@@ -90,7 +71,7 @@ def select_glaciers():
 
     stats0 = pd.read_pickle('data/GreenlandGlacierStats/GreenlandGlacierStats.pik')
 
-    # Select glaciers with fjord width between 2 and 4 km
+    # Select glaciers with fjord width between 2km and 4km
     stats = stats0[(stats0['mean_fjord_width'] >=2) & (stats0['mean_fjord_width'] <= 4)]
 
     # Categorize by different regions / glacier types
