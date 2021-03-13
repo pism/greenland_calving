@@ -6,7 +6,7 @@ import pandas as pd
 import pyproj
 from uafgi import gdalutil,ogrutil,shputil
 from uafgi.nsidc import nsidc0481
-from uafgi import greenland
+from uafgi import greenland,pdutil
 import shapely
 import shapely.geometry
 from osgeo import ogr,osr
@@ -22,6 +22,9 @@ def select_glaciers(includes, w21_blackouts=None):
     # Master set of glaciers from which we will select
     w21 = greenland.read_w21(greenland.map_wkt)
     glaciers = w21.df.copy()
+
+    # TESTING
+#    glaciers = glaciers[glaciers['w21_popular_name']=='Jakobshavn Isbrae']
 
     # Join in the "include" column
     glaciers = pd.merge(glaciers, includes[['w21_key', 'include']], how='left', on='w21_key')
@@ -115,6 +118,47 @@ def select_glaciers_main():
     #print(sel.df.columns)
     #print(select.df[['w21_popular_name', 'lat', 'lon', 'w21_coast', 'ns481_grid', 'fj_poly']])
 
+
+    # Join with CALFIN dataset high-frequency termini
+    cf20= greenland.read_cf20(greenland.map_wkt)
+#    cf20.df.to_csv('cf20.csv')
+    print('===================================')
+    match = greenland.match_point_poly(cf20, 'cf20_locs', select, 'fj_poly').swap()
+    select = match.left_join(overrides=over)
+
+    select.df.to_csv('select.csv')
+
+    # ----- Join with NSIDC-0642 (MEASURES) annual termini
+    ns642 = greenland.read_ns642(greenland.map_wkt)
+    # Combine all points for each GlacierID
+    ns642x = greenland.ns642_by_glacier_id(ns642)
+
+    match = greenland.match_point_poly(
+        ns642x, 'ns642_points', select, 'fj_poly',
+        right_cols=['lat','lon','w21_key']).swap()
+#    print('xyz1', match.df.columns)
+    select = match.left_join(overrides=over)
+
+    
+#    print(select.df[['w21_popular_name', 'w21_coast', 'ns481_grid', 'cf20_key', 'ns642_key']])
+#    print(select.df[['w21_popular_name', 'lat', 'lon', 'w21_coast', 'ns481_grid', 'fj_poly', 'cf20_key']])
+
+
+    print(select.df[['w21_popular_name']])
+    selT,selF = pdutil.split_na(select.df, 'cf20_key')
+    print(selT.columns)
+    cols = ['w21_popular_name', 'w21_coast', 'ns481_grid', 'cf20_key', 'ns642_key']
+    print('xxxxxxxxxxxxxxxxxxxxxxx')
+    print(selT[cols])
+    print('xxxxxxxxxxxxxxxxxxxxxxx')
+    print(selF[cols])
+
+    seldf = select.df.drop(['cf20_locs', 'ns642_points', 'ns481_poly'])
+    
+    select.df.to_pickle('select.df')
+    select.df.to_csv('select.csv')
+
+
     return select
 
 # ====================================================================
@@ -122,4 +166,4 @@ def select_glaciers_main():
 
 
 
-#select_glaciers_main()
+select_glaciers_main()
