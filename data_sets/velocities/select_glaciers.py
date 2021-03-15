@@ -153,10 +153,10 @@ def select_glaciers_main():
     print('xxxxxxxxxxxxxxxxxxxxxxx')
     print(selF[cols])
 
-    seldf = select.df.drop(['cf20_locs', 'ns642_points', 'ns481_poly'])
+    seldf = select.df.drop(['cf20_locs', 'ns642_points', 'ns481_poly'], axis=1)
     
-    select.df.to_pickle('select.df')
-    select.df.to_csv('select.csv')
+    seldf.to_pickle('select.df')
+    seldf.to_csv('select.csv')
 
 
     return select
