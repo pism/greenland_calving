@@ -148,12 +148,14 @@ def select_glaciers_main():
 
     # Read user overrides of joins and columns
     over = read_overrides(
-        'overrides.ods', 'overrides/terminus_locations.shp',
+        'overrides/overrides.ods', 'overrides/terminus_locations.shp',
         ['w21_key', 'bkm15_key'], 'w21_key', uafgi.data.wkt.nsidc_ps_north)
 
     # Set up glacers we DON'T want to select
     blackouts = pd.DataFrame({
         'w21_key' : [
+            ('Upernavik Isstrom SS', 'UPERNAVIK_ISSTROM_SS'),    # Glacier is too much bother
+            ('Midgard Gl.', 'MIDGARDGLETSCHER'),    # Not really any fjord left
     #        ('Bowdoin Gl.', 'BOWDOIN'),
     #        ('F. Graae Gl.', 'F_GRAAE'),
     #        ('Vestfjord Gl.', 'VESTFJORD'),
@@ -207,7 +209,7 @@ def select_glaciers_main():
     match = pdutil.match_point_poly(cf20, 'cf20_locs', select, 'fj_poly').swap()
     select = match.left_join(overrides=over)
 
-    select.df.to_csv('select.csv')
+#    select.df.to_csv('select.csv')
 
     # ----- Join with NSIDC-0642 (MEASURES) annual termini
     ns642 = uafgi.data.ns642.read(uafgi.data.wkt.nsidc_ps_north)
@@ -245,9 +247,8 @@ def select_glaciers_main():
     print('xxxxxxxxxxxxxxxxxxxxxxx')
     print(selF[cols])
 
+    select.df.to_pickle('select_01.df')
     seldf = select.df.drop(['cf20_locs', 'ns642_points', 'ns481_poly'], axis=1)
-    
-    seldf.to_pickle('select_01.df')
     seldf.to_csv('select_01.csv')
 
 
