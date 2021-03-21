@@ -43,10 +43,6 @@ def bedmachine_local_rule(ns481_grid):
         [ofname])
 
 # -------------------------------------------------------------
-def itslive_local_rule(ns481_grid):
-    """Creates a localized ItsLive file"""
-
-# -------------------------------------------------------------
 def render_bedmachine_makefile(select):
     """Given a Glacier selection, creates a Makefile to create all the
     localized BedMachine files required for it."""

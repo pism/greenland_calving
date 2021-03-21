@@ -57,19 +57,20 @@ def prepare_experiment(select):
         # Determine the most-retreated terminus
         def _up_termini():
             for terminus in termini:
-                up_fjord = glacier.upstream_fjord(fjord, grid_info, row.up_loc, terminus)
-                yield np.sum(np.sum(up_fjord==4)), terminus, up_fjord
+                fjc = glacier.classify_fjord(fjord, grid_info, row.up_loc, terminus)
+                up_fjord = np.isin(fjc, glacier.GE_TERMINUS)
+                yield np.sum(np.sum(up_fjord)), terminus, fjc
 
-        _, terminus, up_fjord = min(
+        _, terminus, fjc = min(
             _up_termini(),
             key=lambda x: x[0])
 
         # Return value to put in a series
-        return (fjord, up_fjord, terminus)
+        return (fjc, terminus)
 
     # Compute three new cols; first as one column, then break apart
     combo = select.apply(_add_termini, axis=1)
-    for ix,vname in enumerate(['fjord', 'up_fjord', 'terminus']):
+    for ix,vname in enumerate(['fjord_classes', 'terminus']):
         select[vname] = combo.map(lambda x: x[ix])
 
     return select
@@ -100,18 +101,15 @@ def main():
         grid = row['ns481_grid']
         grid_file = uafgi.data.measures_grid_file(grid)
         grid_info = gdalutil.FileInfo(grid_file)
-        fname = 'x-{:02d}.nc'.format(ix)
+        fjord_classes = row['fjord_classes']
 
-        up_fjord = row['up_fjord']
-
-
+        # Write sample file so we can check results
+        fname = 'fjord_classes-{:02d}.nc'.format(ix)
         ds = gdalutil.clone_geometry('NetCDF', fname, grid_info, 1, gdal.GDT_Byte)
         band = ds.GetRasterBand(1)
         band.SetMetadataItem('NETCDF_VARNAME', row['w21_popular_name'])
-        band.WriteArray(up_fjord)
+        band.WriteArray(fjord_classes)
         ds.FlushCache()
-
-
 
 main()
 
