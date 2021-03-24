@@ -69,10 +69,10 @@ def render_bedmachine_makefile(select):
         targets.append(rule.outputs[0])
 
 
-    makefile.generate(targets, 'localize_bedmachine.mk')
+    makefile.generate(targets, '02_extract_bedmachine.mk')
 
 def main():
-    select = pd.read_pickle('select.df')
+    select = pd.read_pickle('select_01.df')
     render_bedmachine_makefile(select)
     print('Finished rendering Makefile.\n    Run with ./localize_bedmachine.mk/domake')
 
