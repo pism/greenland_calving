@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 import netCDF4
-from uafgi import glacier
+from uafgi import glacier,make
 import uafgi.data
 
 re0 = re.compile('(\d\d\d)_(.*)')
@@ -44,8 +44,12 @@ def stab_files():
 
 
 
-_rf_exclude = {'history', 'NCO', 'creator'}
-def read_file(ifname):
+def _read_file(ifname):
+    import netCDF4
+    import numpy as np
+    from uafgi import glacier
+    _rf_exclude = {'history', 'NCO', 'creator'}
+
     print('Reading {}'.format(ifname))
     row = dict()
     with netCDF4.Dataset(ifname) as nc:
@@ -74,9 +78,10 @@ def read_file(ifname):
             stab_ice.append(up_ice)
         row['stab_ice_extent0'] = stab_ice[0]
         row['stab_ice_extent1'] = stab_ice[1]
+
     return row
 
-def collect_dir(ddir, names):
+def collect_dir_rule(ddir, names):
     """Creates a single dataframe per directory.
     ddir:
         The directory
@@ -84,66 +89,99 @@ def collect_dir(ddir, names):
         Leaf names of files in ddir to process.
     """
 
-    rows = list()
-    index = list()
-
-    # Use existing dataframe to keep already-computed rows
+    force_fname = os.path.join(ddir, os.path.split(ddir)[1] + '.force')
     df_fname = os.path.join(ddir, os.path.split(ddir)[1] + '.df')
     csv_fname = os.path.join(ddir, os.path.split(ddir)[1] + '.csv')
-    if os.path.exists(df_fname):
-        df0 = pd.read_pickle(df_fname)
-        df0_tm = os.path.getmtime(df_fname)
-    else:
-        df0 = None
+    read_file = _read_file    # Import into thunk namespace
 
-    # Filter out already-processed files
-    nread = 0
-    for name in sorted(names):
+    def action(tdir):
+        import os
+        import pandas as pd
 
-        if (df0 is None) or \
-            (name not in df0.index) or \
-            (os.path.getmtime(os.path.join(ddir, name)) > df0_tm):
+        rows = list()
+        index = list()
 
-            # File not yet processed or is stale: read it
-            fname = os.path.join(ddir, name)
-            rows.append(read_file(fname))
-            index.append(name)
-
-            nread += 1
-            if nread > 5:
-                break
+        # Use existing dataframe to keep already-computed rows
+        if os.path.exists(df_fname):
+            df0 = pd.read_pickle(df_fname)
+            df0_tm = os.path.getmtime(df_fname)
         else:
-            # File already processed: use existing row
-            row = df0.loc[name].to_dict()
-            rows.append(row)
-            index.append(name)
+            df0 = None
+
+        # Filter out already-processed files
+        nread = 0
+        for name in sorted(names):
+
+            if (df0 is None) or \
+                (name not in df0.index) or \
+                (os.path.getmtime(os.path.join(ddir, name)) > df0_tm):
+
+                # File not yet processed or is stale: read it
+                fname = os.path.join(ddir, name)
+                rows.append(read_file(fname))
+                index.append(name)
+
+                nread += 1
+#                if nread > 5:
+#                    break
+            else:
+                # File already processed: use existing row
+                row = df0.loc[name].to_dict()
+                rows.append(row)
+                index.append(name)
 
 
-    # Convert back to dataframe
-    df = pd.DataFrame(rows, index=index).sort_index()
+        # Convert back to dataframe
+        df = pd.DataFrame(rows, index=index).sort_index()
 
-    # Save back
-    if nread > 0:
-        pd.to_pickle(df, df_fname)
-        df.to_csv(csv_fname)
-
-
-    return df
+        # Save back
+        if nread > 0:
+            pd.to_pickle(df, df_fname)
+            df.to_csv(csv_fname)
 
 
-def collect_dir_rule
+        return df
+    return make.Rule(action, [], [df_fname+'force', df_fname])
+
+def merge_rule(df_fnames, ofname):
+
+    def action(tdir):
+        import pandas as pd
+
+        dfs = list()
+        for df_fname in df_fnames:
+            dfs.append(pd.read_pickle(df_fname))
+        df = pd.concat(dfs)
+        df.to_pickle(ofname)
+
+
+    return make.Rule(action, df_fnames, [ofname]) 
 
 def main():
-    ofname = uafgi.data.join_outputs('stability', '05_collect.df')
-    row = read_file('outputs/stability/153_KangerlussuaqGl/stab_153_2015_016_KangerlussuaqGl.nc')
+#    ofname = uafgi.data.join_outputs('stability', '05_collect.df')
+#    row = read_file('outputs/stability/153_KangerlussuaqGl/stab_153_2015_016_KangerlussuaqGl.nc')
 
+    makefile = make.Makefile()
+    targets = list()
+
+    ddirs = list()
+    df_fnames = list()
     for dir,names in stab_files():
-        print('=== dir: {}'.format(dir))
-        print('=== names: {}'.format(names))
+        ddirs.append(dir)
 
-        df = collect_dir(dir, names)
-        print(df)
-        break
+        print('=== dir: {}'.format(dir))
+        rule = collect_dir_rule(dir, names)
+        makefile.add(rule)
+        targets.append(rule.outputs[0])
+        df_fnames.append(rule.outputs[1])
+
+
+    ofname = uafgi.data.join_outputs('stability', 'stability.df')
+    rule = merge_rule(df_fnames, ofname)
+    targets.append(rule.outputs[0])
+    makefile.add(rule)
+
+    makefile.generate(targets, '05_collect.mk')
 
 
 
