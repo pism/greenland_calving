@@ -148,7 +148,8 @@ def select_glaciers_main():
 
     # Read user overrides of joins and columns
     over = read_overrides(
-        'overrides/overrides.ods', 'overrides/terminus_locations.shp',
+        uafgi.data.join('stability_overrides/overrides.ods'),
+        uafgi.data.join('stability_overrides/terminus_locations.shp'),
         ['w21_key', 'bkm15_key'], 'w21_key', uafgi.data.wkt.nsidc_ps_north)
 
     # Set up glacers we DON'T want to select
@@ -247,9 +248,10 @@ def select_glaciers_main():
     print('xxxxxxxxxxxxxxxxxxxxxxx')
     print(selF[cols])
 
-    select.df.to_pickle('select_01.df')
+    os.makedirs(uafgi.data.join_outputs('stability'), exist_ok=True)
+    select.df.to_pickle(uafgi.data.join_outputs('stability/01_select.df'))
     seldf = select.df.drop(['cf20_locs', 'ns642_points', 'ns481_poly'], axis=1)
-    seldf.to_csv('select_01.csv')
+    seldf.to_csv(uafgi.data.join_outputs('stability/01_select.csv'))
 
 
     return select

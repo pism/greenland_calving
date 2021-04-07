@@ -41,6 +41,7 @@ def prepare_experiment(select):
     ns642_dict = dict(list(ns642.df.groupby(by='ns642_GlacierID')))
 
     def _add_termini(row):
+        print('glacierid ', row['ns481_grid'], row['ns642_GlacierID'])
         # Determine the local grid
         grid = row['ns481_grid']
         grid_file = uafgi.data.measures_grid_file(grid)
@@ -86,7 +87,7 @@ def prepare_experiment(select):
 
 # ===============================================================
 def main():
-    select = pd.read_pickle('select_01.df')
+    select = pd.read_pickle(uafgi.data.join_outputs('stability', '01_select.df'))
 
     # Just one row for testing
 #    select = select[select['w21_key']==('Rink Isbrae', 'RINK_ISBRAE')]
@@ -94,8 +95,8 @@ def main():
     select = prepare_experiment(select)
     print('select:......')
     print(select.columns)
-    select.to_pickle('select_03.df')
-    select.to_csv('select_03.csv')
+    select.to_pickle(uafgi.data.join_outputs('stability', '03_select.df'))
+    select.to_csv(uafgi.data.join_outputs('stability', '03_select.csv'))
 
     for ix,row in select.iterrows():
         grid = row['ns481_grid']

@@ -69,11 +69,11 @@ def render_bedmachine_makefile(select):
         targets.append(rule.outputs[0])
 
 
-    makefile.generate(targets, '02_extract_bedmachine.mk')
+    makefile.generate(targets, '02_extract_bedmachine.mk', slurm=True)
 
 def main():
-    select = pd.read_pickle('select_01.df')
+    select = pd.read_pickle(uafgi.data.join_outputs('stability', '01_select.df'))
     render_bedmachine_makefile(select)
-    print('Finished rendering Makefile.\n    Run with ./localize_bedmachine.mk/domake')
+    print('Finished rendering Makefile.\n    Run with ./02_extract_bedmachine.mk/make')
 
 main()
