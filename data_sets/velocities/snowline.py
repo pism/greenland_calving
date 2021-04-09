@@ -33,7 +33,7 @@ class _Offsides:
         return ice_of,snow_of
 
 
-def get_snowline(cls0, ele, gridfile_nc, outline_shp):
+def get_snowline(cls0, ele, grid_info, outline_shp):
     """Computes the snowline within a (union of) polygons.
     cls0: np.array
         Surface type classification raster
@@ -44,7 +44,6 @@ def get_snowline(cls0, ele, gridfile_nc, outline_shp):
     outline_shp:
         Polygons within which snowline will be computed.
         File can be in any projection.
-
     Returns: dict
         snowline_z:
             Best-fit snowline within the region of the outline polygon(s)
@@ -54,12 +53,11 @@ def get_snowline(cls0, ele, gridfile_nc, outline_shp):
             a perfect metric of quality of fit.  But it IS independent
             of the area of the region (most of which might be far from
             the snowline)
-
     """
 
     # Overlap by union of polygons in outline_shp
     poly_ds = gdalutil.open(outline_shp, driver='ESRI Shapefile')
-    poly_raster = gdalutil.rasterize_polygons(poly_ds, gridfile_nc)
+    poly_raster = gdalutil.rasterize_polygons(poly_ds, grid_info)
 
 
     # Include only pixels inside the polygon
@@ -104,7 +102,6 @@ def snowline_by_region(elev_tif, class_tif, outlines_shp, shp_filter_fn):
     shp_filter_fn: function: (dict) -> bool
         Function to be run on record from shapefile reader.
         Returns True if we wish to use this region.
-
     Yields: dict
         Metadata obtained from outlines_shp, PLUS:
         snowline_z:
@@ -114,11 +111,12 @@ def snowline_by_region(elev_tif, class_tif, outlines_shp, shp_filter_fn):
         
     """
 
-    with ioutil.TmpDir(tdir='tdir') as tdir:
+    with ioutil.TmpDir() as tdir:
 
         # Convert GeoTIFF to NetCDF
         elev_nc = tdir.filename(suffix='.nc')
         gdal.Translate(elev_nc, elev_tif, format='NetCDF')
+        grid_info = gdalutil.FileInfo(elev_nc)
 
         # Read the input GeoTIFF files
         class0 = geotiffutil.read(class_tif, 1)
@@ -134,7 +132,7 @@ def snowline_by_region(elev_tif, class_tif, outlines_shp, shp_filter_fn):
                 shputil.select_feature(outlines_shp, fid, outline_shp)
 
                 rec.update(get_snowline(
-                    class0, elev, elev_nc, outline_shp))
+                    class0, elev, grid_info, outline_shp))
 
                 yield rec
 
@@ -142,7 +140,11 @@ def main():
     elev_tif = 'velocities_data/snowline/DEMMODIS_GIMP.tif'
     class_tif = 'velocities_data/snowline/20120715_classification.tif'
     outlines_shp = 'velocities_data/GreenlandDrainageBasins/GRE_Basins_IMBIE2_v1.3.shp'
-#    outlines_shp = 'velocities_data/GreenlandGlacierBasins/Greenland_Basins_PS_v1.4.2ext.shp'
+# #    outlines_shp = 'velocities_data/GreenlandGlacierBasins/Greenland_Basins_PS_v1.4.2ext.shp'
+
+#    elev_tif = '/home/raf/Documents/Columbia/Research/Albedo/Data/GIMP_DEM/DEMMODIS_GIMP.tif'
+#    class_tif = '/home/raf/Documents/Columbia/Research/Albedo/20120715_classification.tif'
+#    outlines_shp = '/home/raf/Documents/Columbia/Research/Albedo/Data/IMBIE/GRE_Basins_IMBIE2_v1.3/GRE_Basins_IMBIE2_v1.3.shp'
 
     for rec in snowline_by_region(elev_tif, class_tif, outlines_shp,
         lambda rec: rec['SUBREGION1'] != 'ICE_CAP'):
