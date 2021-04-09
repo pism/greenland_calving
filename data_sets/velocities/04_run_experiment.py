@@ -23,8 +23,8 @@ def run_pism_rule(row, year, sigma_max):
             str(year),
             ssigma_max,
             pname))
-    ofname_raw = uafgi.data.join_outputs('stability_raw', (leaf%'stabraw'))
-    ofname = uafgi.data.join_outputs('stability', (leaf%'stab'))
+    ofname_raw = uafgi.data.join_outputs('stability', (leaf%'stab'))
+#    ofname = uafgi.data.join_outputs('stability', (leaf%'stab'))
 
 
     def action(tdir, dry_run=False):
@@ -41,7 +41,7 @@ def run_pism_rule(row, year, sigma_max):
         # returns (inputs, outputs) on dry_run=True
         return flow_simulation.run_pism(
             grid, fjord_classes, velocity_file, year,
-            ofname_raw, ofname, tdir,
+            ofname_raw, None, tdir,
             row=row, dry_run=dry_run, sigma_max=sigma_max)
 
     inputs,outputs = action(None, dry_run=True)

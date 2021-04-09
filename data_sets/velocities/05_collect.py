@@ -7,7 +7,7 @@ from uafgi import glacier,make
 import uafgi.data
 
 re0 = re.compile('(\d\d\d)_(.*)')
-re1 = re.compile('stab_(\d\d\d)_(\d\d\d\d)_(\d+)_(.*)')
+re1 = re.compile('stabraw_(\d\d\d)_(\d\d\d\d)_(\d+)_(.*)')
 def stab_files():
     """List available files from experiment.
     Screens them by name, to avoid including extraneous files.
@@ -48,6 +48,9 @@ def _read_file(ifname):
     import netCDF4
     import numpy as np
     from uafgi import glacier
+    import cf_units
+    import datetime
+
     _rf_exclude = {'history', 'NCO', 'creator'}
 
     print('Reading {}'.format(ifname))
@@ -70,14 +73,24 @@ def _read_file(ifname):
         fjord = np.isin(fjc, glacier.ALL_FJORD)
 
         # Compute upstream fjord ice area for first and last
+        nctime = nc.variables['time']
+        # https://github.com/Unidata/cftime/issues/77
+        times = [
+            datetime.datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+            for dt in
+            cf_units.Unit(nctime.units, calendar=nctime.calendar). \
+                num2date(nctime[:])]
+
         time_d = nc.dimensions['time']
         stab_ice = list()
-        for itime in (0,len(time_d)-1):
-            thk = nc.variables['thk'][itime,:]
+        thk3 = nc.variables['thk'][:]
+        for itime,time in enumerate(times):
+            thk = thk3[itime,:]
             up_ice = dy * dx * np.sum(np.logical_and(fjord, thk>0))
             stab_ice.append(up_ice)
-        row['stab_ice_extent0'] = stab_ice[0]
-        row['stab_ice_extent1'] = stab_ice[1]
+
+        row['stab_time'] = times
+        row['stab_ice'] = stab_ice
 
     return row
 
@@ -141,7 +154,7 @@ def collect_dir_rule(ddir, names):
 
 
         return df
-    return make.Rule(action, [], [df_fname+'force', df_fname])
+    return make.Rule(action, [], [df_fname], force=True)
 
 def merge_rule(df_fnames, ofname):
 
@@ -173,7 +186,7 @@ def main():
         rule = collect_dir_rule(dir, names)
         makefile.add(rule)
         targets.append(rule.outputs[0])
-        df_fnames.append(rule.outputs[1])
+        df_fnames.append(rule.outputs[0])
 
 
     ofname = uafgi.data.join_outputs('stability', 'stability.df')
