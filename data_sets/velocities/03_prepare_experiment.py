@@ -67,18 +67,86 @@ def prepare_experiment(select):
             key=lambda x: x[0])
 
         # Return value to put in a series
-        return (fjc, terminus)
+        return (grid_info, fjc, terminus)
 
     # Compute three new cols; first as one column, then break apart
     combo = select.apply(_add_termini, axis=1)
-    for ix,vname in enumerate(['fjord_classes', 'terminus']):
+    for ix,vname in enumerate(['grid_info', 'fjord_classes', 'terminus']):
         select[vname] = combo.map(lambda x: x[ix])
 
     return select
 
 
 # ==================================================================
+# apply linear regresion using numpy
+def linReg(x, y):
+    '''linear regression using numpy starting from two one dimensional numpy arrays
+    x: np.array
+        Values of independent variable
+    y: np.arry
+        Values of dependent variable'''
+    A = np.vstack([x, np.ones(len(x))]).T
+    slope, intercept = np.linalg.lstsq(A, y, rcond=None)[0]
+    return pd.Series({'slope':slope, 'intercept': intercept})
 
+
+def add_termini(select):
+    """Adds two columns to selected glaciers, from ns642 dataset:
+        years:
+            List of years
+        termini:
+            LineString of terminus for each year
+
+    select:
+        The dataset to add to
+    """
+
+    # Use standard Polar Stereographic projection for Greenland
+    map_wkt = uafgi.wkt.nsidc_ps_north
+    ns642 = uafgi.data.ns642.read(map_wkt)
+
+    # Before grouping, filter by Glacier IDs we care about
+    # So we don't waste time reading termini of useless glacierss
+    glacier_ids = set(select['ns642_GlacierID'].to_list())
+    ns642x = ns642.df[ns642.df['ns642_GlacierID'].isin(glacier_ids)]
+
+    # Group by GlacierID
+    ns642g = ns642x[['ns642_GlacierID', 'ns642_year0', 'ns642_terminus']].groupby(['ns642_GlacierID'])
+
+    # Create DataFrame with years and termini as lists
+    def _year_terminus_to_list(df):
+#        grid_file = uafgi.data.measures_grid_file(grid)
+#        grid_info = gdalutil.FileInfo(grid_file)
+        years = df['ns642_year0'].to_list()
+        termini = df['ns642_terminus'].to_list()
+        return pd.DataFrame(data={'ns642_years': [years], 'ns642_termini': [termini]})
+
+    ytdf = ns642g.apply(_year_terminus_to_list).reset_index().drop(['level_1'], axis=1)
+
+
+    df = pd.merge(select, ytdf, how='left', on='ns642_GlacierID', suffixes=(None,'_DELETEME'))
+    drops = [x for x in df.columns if x.endswith('_DELETEME')]
+    df = df.drop(drops, axis=1)
+    return df
+
+
+def _retreat_rate(row):
+    fjord = np.isin(row['fjord_classes'], glacier.ALL_FJORD)
+    ice_area = [glacier.ice_area(row.grid_info, fjord, row.up_loc, t) for t in row.ns642_termini]
+    ice_len = [x / (row.w21_mean_fjord_width * 1000.) for x in ice_area]
+    slope,_ = linReg(row.ns642_years, ice_len)
+    return slope
+
+def add_retreat_rate(select):
+    '''Adds a column to the dataframe, based on ns642 terminus positions
+    retreat_rate: [m/a]
+        Calculated linear rate of retreat of the glacier.
+        Obtained as m^2/a and dividing by the mean fjord width.
+    '''
+    select = add_termini(select)
+    select['retreat_rate'] = select.apply(_retreat_rate, axis=1)
+#    select = select.drop([['ns642_years', 'ns642_termini']], axis=1)
+    return select
 
 
 # ==================================================================
@@ -93,6 +161,8 @@ def main():
 #    select = select[select['w21_key']==('Rink Isbrae', 'RINK_ISBRAE')]
 
     select = prepare_experiment(select)
+    select = add_retreat_rate(select)
+
     print('select:......')
     print(select.columns)
     select.to_pickle(uafgi.data.join_outputs('stability', '03_select.df'))
