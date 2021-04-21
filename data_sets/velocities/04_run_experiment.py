@@ -41,7 +41,7 @@ def run_pism_rule(row, year, sigma_max):
         # returns (inputs, outputs) on dry_run=True
         return flow_simulation.run_pism(
             grid, fjord_classes, velocity_file, year,
-            ofname_raw, None, tdir,
+            ofname_raw, tdir,
             row=row, dry_run=dry_run, sigma_max=sigma_max)
 
     inputs,outputs = action(None, dry_run=True)
