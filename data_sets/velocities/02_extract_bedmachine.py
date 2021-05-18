@@ -5,6 +5,7 @@ import uafgi.wkt
 import uafgi.data
 import uafgi.data.ns642
 import uafgi.data.itslive
+from uafgi.pism import flow_simulation
 
 """Set up bedmachine files --- both global and local --- as required
 for our experiment."""
@@ -59,8 +60,9 @@ def render_bedmachine_makefile(select):
         makefile.add(rule)
         targets.append(rule.outputs[0])
 
+    # Convert the ItsLive files
     for grid in select['ns481_grid']:
-        print('grid ',grid)
+        # Localize the ItsLive file
         rule = uafgi.data.itslive.merge_to_pism_rule(grid,
             uafgi.data.measures_grid_file(grid),
             uafgi.data.join('itslive/GRE_G0240_{}.nc'),
@@ -68,8 +70,13 @@ def render_bedmachine_makefile(select):
         makefile.add(rule)
         targets.append(rule.outputs[0])
 
+        # Compute von Mises stress for it
+        rule = flow_simulation.compute_sigma_rule(
+            rule.outputs[0], uafgi.data.join_outputs('itslive'))
+        makefile.add(rule)
+        targets.append(rule.outputs[0])
 
-    makefile.generate(targets, '02_extract_bedmachine.mk', slurm=True)
+    makefile.generate(targets, '02_extract_bedmachine.mk')
 
 def main():
     select = pd.read_pickle(uafgi.data.join_outputs('stability', '01_select.df'))
