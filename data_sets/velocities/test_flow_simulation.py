@@ -39,10 +39,12 @@ def run_pism_rule(row, year, sigma_max):
         fjord_classes = np.flipud(row['fjord_classes'])
 
         # returns (inputs, outputs) on dry_run=True
-        return flow_simulation.run_pism(
-            grid, fjord_classes, velocity_file, year,
+        return flow_simulation.get_von_Mises_stress(
+            grid, velocity_file,
             ofname_raw, tdir,
-            row=row, dry_run=dry_run, sigma_max=sigma_max)
+            year=year,
+            dry_run=dry_run, attrs=row, sigma_max=sigma_max,
+            dt_s=100)
 
     inputs,outputs = action(None, dry_run=True)
     return make.Rule(action, inputs, outputs)
@@ -56,6 +58,7 @@ def main():
     sigma_maxs = list(np.arange(1e5,5.2e5,.2e5))
 
     select = pd.read_pickle(uafgi.data.join_outputs('stability', '03_select.df'))
+#    for itime in range(0,2):
     for year in range(2011, 2019):
 #        for sigma_max in (sigma_maxs[0],sigma_maxs[-1]):
         for sigma_max in sigma_maxs:
