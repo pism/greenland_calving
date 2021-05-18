@@ -1,6 +1,6 @@
 import os
 import itertools
-from uafgi import make,glaciers
+from uafgi import make,glacier
 import uafgi.nsidc.nsidc0481
 import sys
 sys.path.append('.')
