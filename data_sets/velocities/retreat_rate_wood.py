@@ -50,6 +50,7 @@ w21tx = w21t[w21t['w21t_Glacier'] == row['w21t_Glacier']].sort_values(['w21t_dat
 # velocities, and compare to Wood et al 2021 data.
 
 itslive_nc = 'outputs/itslive/GRE_G0240_{}_2011_2018.nc'.format(grid)
+print('itslive_nc = {}'.format(itslive_nc))
 #sigma_nc = make.opath(itslive_nc, odir, '_sigma')
 sigma_nc = os.path.splitext(itslive_nc)[0] + '_sigma.nc'
 
@@ -81,8 +82,8 @@ terminus = terminus_row.w21t_terminus
 
 # Read velocity components
 with netCDF4.Dataset(itslive_nc) as nc:
-    uu = nc.variables['u_ssa_bc'][itime_itslive,:]
-    vv = nc.variables['v_ssa_bc'][itime_itslive,:]
+    uu = ncutil.convert_var(nc, 'u_ssa_bc', 'm s-1')[itime_itslive,:]
+    vv = ncutil.convert_var(nc, 'v_ssa_bc', 'm s-1')[itime_itslive,:]
 
 
 # Read sigma
@@ -110,8 +111,12 @@ uu[kill_mask] = 0
 vv[kill_mask] = 0
 
 # --------------------------------------------------
-u_sigma = uu * sigma
-v_sigma = vv * sigma
+#u_sigma = uu * sigma
+#v_sigma = vv * sigma
+
+u_sigma = np.copy(uu)
+v_sigma = np.copy(vv)
+
 
 # Compute flux across the boundary (and length of the boundary)
 flux = pismutil.flux_across_terminus(mask, fjord, u_sigma, v_sigma, grid_info.dx, grid_info.dy)
@@ -134,8 +139,12 @@ with netCDF4.Dataset(itslive_nc) as ncin:
         ncout.variables['flux'][:] = flux[:]
 
 tflux = np.sum(flux)
-print('Mean fjord width: {}'.format(row['w21_mean_fjord_width']))
+fjord_width = row['w21_mean_fjord_width'] * 1000.    # Data in km
 
+print('Mean fjord width: {}'.format(fjord_width))
+
+aflux = (tflux / fjord_width) * (365 * 86400.)
+print('Flux: {} m^2/s = {} m/a'.format(tflux, aflux))
 
 print(flux)
 
