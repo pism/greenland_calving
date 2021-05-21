@@ -17,7 +17,7 @@ import uafgi.data.m17
 import uafgi.data.mwp
 import uafgi.data.ns481
 import uafgi.data.ns642
-import uafgi.data.w21
+import uafgi.data.w21 as d_w21
 import uafgi.data.wkt
 from uafgi.data import greenland,stability
 import pickle
@@ -33,7 +33,7 @@ def select_glaciers(includes, w21_blackouts=None):
     """
 
     # Master set of glaciers from which we will select
-    w21 = uafgi.data.w21.read(uafgi.data.wkt.nsidc_ps_north)
+    w21 = d_w21.read(uafgi.data.wkt.nsidc_ps_north)
     glaciers = w21.df.copy()
 
     # TESTING
@@ -156,8 +156,14 @@ def select_glaciers_main():
     match = pdutil.match_point_poly(up, 'up_loc', select, 'fj_poly').swap()
     select = match.left_join()
 
-        
-
+    # ----- Add termini from Wood et al 2021
+    w21t = d_w21.read_termini(uafgi.data.wkt.nsidc_ps_north)
+    w21tp = d_w21.termini_by_glacier(w21t)
+    match = pdutil.match_point_poly(w21tp, 'w21t_points', select, 'fj_poly').swap()
+    select = match.left_join(overrides=over)
+    select.df = select.df.drop(['w21t_points'], axis=1)
+    # Don't do this yet, it repeats rows...
+    # select.df = pdutil.merge_nodups(select.df, w21t.df, how='left', on='w21t_Glacier')
     
 #    print(select.df[['w21_popular_name', 'w21_coast', 'ns481_grid', 'cf20_key', 'ns642_key']])
 #    print(select.df[['w21_popular_name', 'lat', 'lon', 'w21_coast', 'ns481_grid', 'fj_poly', 'cf20_key']])
