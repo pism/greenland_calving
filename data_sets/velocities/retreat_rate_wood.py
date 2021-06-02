@@ -31,9 +31,9 @@ select = pd.read_pickle(uafgi.data.join_outputs('stability', '03_select.df'))
 w21t = d_w21.read_termini(uafgi.data.wkt.nsidc_ps_north).df
 
 # Choose a glacier to look at (will put in a loop later)
-#row = select.iloc[0].to_dict()
+row = select.iloc[0].to_dict()
 print(select['w21_key'])
-row = select.loc[13].to_dict()
+#row = select.loc[13].to_dict()
 print(list(row.keys()))
 print('Glacier: {}'.format(row['w21_key']))
 grid = row['ns481_grid']

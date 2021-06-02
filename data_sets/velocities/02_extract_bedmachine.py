@@ -6,6 +6,7 @@ import uafgi.data
 import uafgi.data.ns642
 import uafgi.data.itslive
 from uafgi.pism import flow_simulation
+import datetime
 
 """Set up bedmachine files --- both global and local --- as required
 for our experiment."""
@@ -64,9 +65,9 @@ def render_bedmachine_makefile(select):
     for grid in select['ns481_grid']:
         # Localize the ItsLive file
         rule = uafgi.data.itslive.merge_to_pism_rule(grid,
-            uafgi.data.measures_grid_file(grid),
-            uafgi.data.join('itslive/GRE_G0240_{}.nc'),
-            range(2011,2019), uafgi.data.join_outputs('itslive'))
+            uafgi.data.itslive.ItsliveMerger,
+            datetime.datetime(2011,1,1), datetime.datetime(2019,1,1))
+
         makefile.add(rule)
         targets.append(rule.outputs[0])
 
@@ -75,6 +76,24 @@ def render_bedmachine_makefile(select):
             rule.outputs[0], uafgi.data.join_outputs('itslive'))
         makefile.add(rule)
         targets.append(rule.outputs[0])
+
+    # Convert the Wood 2021 velocity files
+    for grid in select['ns481_grid']:
+        # Localize the Wood 2021 velocity file
+        rule = uafgi.data.itslive.merge_to_pism_rule(grid,
+            uafgi.data.itslive.W21Merger,
+            datetime.datetime(2011,1,1), datetime.datetime(2020,1,1))
+
+        makefile.add(rule)
+        targets.append(rule.outputs[0])
+
+        # Compute von Mises stress for it
+        rule = flow_simulation.compute_sigma_rule(
+            rule.outputs[0], uafgi.data.join_outputs('wood2021', 'velocities'))
+        makefile.add(rule)
+        targets.append(rule.outputs[0])
+
+
 
     makefile.generate(targets, '02_extract_bedmachine.mk')
 
