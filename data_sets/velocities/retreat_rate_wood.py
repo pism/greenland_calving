@@ -50,6 +50,7 @@ w21tx = w21t[w21t['w21t_Glacier'] == row['w21t_Glacier']].sort_values(['w21t_dat
 # velocities, and compare to Wood et al 2021 data.
 
 itslive_nc = 'outputs/itslive/GRE_G0240_{}_2011_2018.nc'.format(grid)
+#itslive_nc = 'outputs/wood2021/velocities/vel_{}_2011_2020.nc'.format(grid)
 print('itslive_nc = {}'.format(itslive_nc))
 #sigma_nc = make.opath(itslive_nc, odir, '_sigma')
 sigma_nc = os.path.splitext(itslive_nc)[0] + '_sigma.nc'
