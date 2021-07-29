@@ -5,7 +5,7 @@ import re
 import pandas as pd
 import pyproj
 from uafgi import gdalutil,ogrutil,shputil
-from uafgi import pdutil
+from uafgi import pdutil,shapelyutil
 import shapely
 import shapely.geometry
 from osgeo import ogr,osr
@@ -27,126 +27,92 @@ import pickle
 
 
 # ------------------------------------------------------------------
-def select_glaciers(includes, w21_blackouts=None):
+def select_glaciers(includes):
     """w21_blackouts:
         DataFrame with index matching w21, cols do not matter; rows we do NOT want to select.
+    select: filter1, all
+        Apply filters to the set of Wood et al 2021 glaciers?
     """
 
-    # Master set of glaciers from which we will select
-    w21 = d_w21.read(uafgi.data.wkt.nsidc_ps_north)
-    glaciers = w21.df.copy()
 
-    # TESTING
-#    glaciers = glaciers[glaciers['w21_popular_name']=='Jakobshavn Isbrae']
-
-    # Join in the "include" column
-    glaciers = pd.merge(glaciers, includes[['w21_key', 'include']], how='left', on='w21_key')
-    # Rows of w21 we MUST include
-    include_rows = glaciers[glaciers['include'] == 1]
-
-    if w21_blackouts is not None:
-        # Get the original w21.df's index onto the blackouts list
-        blackouts_index= pd.merge(w21.df.reset_index(), w21_blackouts, how='inner', on='w21_key').set_index('index').index
-
-        # Remove items we previously decided we DID NOT want to select
-        glaciers = glaciers.drop(blackouts_index, axis=0)
-
-    # Select glaciers with fjord width between 2km and 4km
-    glaciers = glaciers[(glaciers['w21_mean_fjord_width'] >=2) & (glaciers['w21_mean_fjord_width'] <= 4)]
-
-    # Categorize by different regions / glacier types
-    dfg = glaciers.groupby(['w21_coast', 'w21_category'])
-
-    # Select glacier with maximum mean discharge in each category
-    # https://stackoverflow.com/questions/32459325/python-pandas-dataframe-select-row-by-max-value-in-group?noredirect=1&lq=1
-    select = dfg.apply(lambda group: group.nlargest(1, columns='w21_mean_discharge')).reset_index(drop=True)
-
-    # Add in the includes
-    select = pd.concat([select, include_rows]) \
-        .drop_duplicates(subset=['w21_key']) \
-        .reset_index()
-
-    return w21.replace(df=select)
+    glaciers = w21.replace(df=glaciers.copy())
 
 
 def select_glaciers_main():
+
+    map_wkt = uafgi.data.wkt.nsidc_ps_north
 
     pd.set_option('display.max_columns', None)
 
     # Read user overrides of joins and columns
     over = stability.read_overrides()
 
+    # Get initial list of glaciers
+    # Master set of glaciers from which we will select
+#    w21 = d_w21.read(uafgi.data.wkt.nsidc_ps_north)
+
+    # Get a single terminus point for each glacier; our initial selection
+    w21t = d_w21.read_termini(map_wkt)
+
+    # ------------------- Remove blackout glaciers
     # Set up glacers we DON'T want to select
-    blackouts = pd.DataFrame({
-        'w21_key' : [
-            ('Upernavik Isstrom SS', 'UPERNAVIK_ISSTROM_SS'),    # Glacier is too much bother
-            ('Midgard Gl.', 'MIDGARDGLETSCHER'),    # Not really any fjord left
-    #        ('Bowdoin Gl.', 'BOWDOIN'),
-    #        ('F. Graae Gl.', 'F_GRAAE'),
-    #        ('Vestfjord Gl.', 'VESTFJORD'),
+    w21t_blackouts = pd.DataFrame({
+        'w21t_Glacier' : [
+            # Kakivfaat glacier has one glacier front in Wood data, but two in NSIDC-0642 (as it separates)
+            'Kakivfaat',
         ]
     })
 
-    # Get initial list of glaciers
-    select = select_glaciers(over, blackouts)
+    # Get the original w21.df's index onto the blackouts list
+    blackouts_index= pd.merge(w21t.df.reset_index(), w21t_blackouts, how='inner', on='w21t_Glacier').set_index('index').index
 
-    # Join with bkm15
-    bkm15 = uafgi.data.bkm15.read(uafgi.data.wkt.nsidc_ps_north)
-    match = greenland.match_allnames(select, bkm15)
-    select = match.left_join(overrides=over)
-#    print(select.df.columns)
+    # Remove items we previously decided we DID NOT want to select
+    w21t.df = w21t.df.drop(blackouts_index, axis=0)
+    # ---------------------------------
+    w21t.df = w21t.df[w21t.df.w21t_Glacier != 'Kakivfaat']
+#    w21tx_termini = pdutil.group_and_tuplelist(w21t.df, 'w21t_Glacier', [ ('terminus_by_date', ['w21t_date', 'w21t_terminus']) ])
+    w21tx = d_w21.termini_by_glacier(w21t)
 
+    # Convert [(date, terminus), ...] into a list of points
+    w21tx.df['w21t_points'] = w21tx.df['w21t_date_termini'].map(
+            lambda date_terminus_list: shapelyutil.pointify(shape for _,shape in date_terminus_list))
 
+    # Join back with w21
+    w21 = d_w21.read(map_wkt)
+    w21tx.df = pdutil.merge_nodups(w21tx.df, w21.df, how='left', left_on='w21t_glacier_number', right_on='w21_glacier_number')
+    # Now we have column w21_key
 
-    select.df = pdutil.override_cols(select.df, over, 'w21_key',
-        [('bkm15_lat', 'lat', 'lat'),
-         ('bkm15_lon', 'lon', 'lon'),
-         ('bkm15_loc', 'loc', 'loc')])
-#    print(select.df[['w21_key','bkm15_key']])
-#    print(select.df.loc([32]))
-
-#    print(select.df[['w21_key','bkm15_key']])
-
-    # Identify the hand-drawn fjord for each item
+    # Identify the hand-drawn fjord matched to each glacier in our selection
     fj = uafgi.data.fj.read(uafgi.data.wkt.nsidc_ps_north)
-    match = pdutil.match_point_poly(select, 'loc', fj, 'fj_poly')
-    select = match.left_join(right_cols=['fj_poly', 'fj_fid'])
+    ret = uafgi.data.fj.match_to_points(
+        w21tx, 'w21t_glacier_number', 'w21t_points',
+        fj, debug_shapefile='fjdup.shp')
+    select = ret['select']
+    select.df = select.df.drop('w21t_points', axis=1)    # No longer need, it takes up space
 
+    # PS: if there's a problem, ret['glaciersdup'] and ret['fjdup'] will be set; see 'fjdup.shp' file.
+    select.df = select.df.dropna(subset=['fj_fid'])    # Drop glaciers without a hand-drawn fjord
+
+    # Obtain set of local MEAUSRES grids on Greenland
     ns481 = uafgi.data.ns481.read(uafgi.data.wkt.nsidc_ps_north)
 
-    match = pdutil.match_point_poly(select, 'loc', ns481, 'ns481_poly',
+    match = pdutil.match_point_poly(select, 'w21t_tloc', ns481, 'ns481_poly',
         left_cols=['fj_poly'], right_cols=['ns481_poly'])
     match.df['fjord_grid_overlap'] = match.df.apply(
             lambda x: 0 if (type(x['ns481_poly'])==float or type(x['fj_poly']) == float)
             else x['ns481_poly'].intersection(x['fj_poly']).area / x['fj_poly'].area,
             axis=1)
 
-    match.df.sort_values(['w21_ix'])
+    match.df.sort_values(['w21t_ix'])
 
-    select = match.left_join(overrides=over[['w21_key', 'ns481_key']])
+    try:
+        select = match.left_join(overrides=over[['w21_key', 'ns481_key']])
+    except pdutil.JoinError as err:
+        print(err.df[['w21_key', 'ns481_key']].sort_values('ns481_key'))
+        raise
+
+    # Only keep glaciers inside a MEASURES grid
     select.df = select.df[~select.df['ns481_key'].isna()]
-
-
-    # Join with CALFIN dataset high-frequency termini
-    cf20= uafgi.data.cf20.read(uafgi.data.wkt.nsidc_ps_north)
-#    cf20.df.to_csv('cf20.csv')
-    print('===================================')
-    match = pdutil.match_point_poly(cf20, 'cf20_locs', select, 'fj_poly').swap()
-    select = match.left_join(overrides=over)
-
-#    select.df.to_csv('select.csv')
-
-    # ----- Join with NSIDC-0642 (MEASURES) annual termini
-    ns642 = uafgi.data.ns642.read(uafgi.data.wkt.nsidc_ps_north)
-    # Combine all points for each GlacierID
-    ns642x = uafgi.data.ns642.by_glacier_id(ns642)
-
-    match = pdutil.match_point_poly(
-        ns642x, 'ns642_points', select, 'fj_poly',
-        right_cols=['lat','lon','w21_key']).swap()
-#    print('xyz1', match.df.columns)
-    select = match.left_join(overrides=over)
-
 
     # ----- Add a single upstream point for each glacier
     up = shputil.read_df(
@@ -154,10 +120,54 @@ def select_glaciers_main():
         wkt=uafgi.data.wkt.nsidc_ps_north, shape='loc', add_prefix='up_')
 
     match = pdutil.match_point_poly(up, 'up_loc', select, 'fj_poly').swap()
-    select = match.left_join()
+
+    try:
+        select = match.left_join()
+    except pdutil.JoinError as err:
+        df = err.df[['w21t_key']].drop_duplicates()
+        df = pdutil.merge_nodups(df, select.df[['w21t_key','fj_poly', 'fj_fid']], how='left', on='w21t_key')
+        # Write fjords with duplicate upstream points to a shapefile
+        fields=[ogr.FieldDefn('fj_fid',ogr.OFTInteger)]
+        shputil.write_shapefile2(df['fj_poly'].tolist(), 'fjupdup.shp', fields, attrss=list(zip(df['fj_fid'].tolist())))
+
+        # Print it out:
+        print('Fjords with duplicate upstream points:\n{}'.format(df))
+
+    # -------------------------------------------------------------
+    # Get historical termini
+
+
+    # ---- Join with CALFIN dataset high-frequency termini
+    cf20= uafgi.data.cf20.read(uafgi.data.wkt.nsidc_ps_north)
+#    cf20.df.to_csv('cf20.csv')
+    print('===================================')
+    match = pdutil.match_point_poly(cf20, 'cf20_locs', select, 'fj_poly').swap()
+    try:
+        select = match.left_join(overrides=over)
+    except pdutil.JoinError as err:
+        print(err.df)
+        raise
+
+    # ----- Join with NSIDC-0642 (MEASURES) annual termini
+    ns642 = uafgi.data.ns642.read(uafgi.data.wkt.nsidc_ps_north)
+    # Combine all points for each GlacierID
+    ns642x = uafgi.data.ns642.by_glacier_id(ns642)
+
+    match = pdutil.match_point_poly(
+        ns642x, 'ns642_points', select, 'fj_poly').swap()
+#    print(match.df)
+#    match = match.df[match.df['w21_key'] != 'Kakivfaat']
+#        right_cols=['lat','lon','w21_key']).swap()
+#    print('xyz1', match.df.columns)
+    select = match.left_join(overrides=over)
+
+
+    return select
+
+
 
     # ----- Add termini from Wood et al 2021
-    w21t = d_w21.read_termini(uafgi.data.wkt.nsidc_ps_north)
+    w21t = d_w21.read5_termini(uafgi.data.wkt.nsidc_ps_north)
     w21tp = d_w21.termini_by_glacier(w21t)
     match = pdutil.match_point_poly(w21tp, 'w21t_points', select, 'fj_poly').swap()
     select = match.left_join(overrides=over)
@@ -193,4 +203,4 @@ def select_glaciers_main():
 
 
 
-select_glaciers_main()
+#select_glaciers_main()
