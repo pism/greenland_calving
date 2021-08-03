@@ -73,9 +73,11 @@ def select_glaciers_main():
 #    w21tx_termini = pdutil.group_and_tuplelist(w21t.df, 'w21t_Glacier', [ ('terminus_by_date', ['w21t_date', 'w21t_terminus']) ])
     w21tx = d_w21.termini_by_glacier(w21t)
 
-    # Convert [(date, terminus), ...] into a list of points
+    # Convert [(date, terminus), ...] into a MultiPoint object
     w21tx.df['w21t_points'] = w21tx.df['w21t_date_termini'].map(
             lambda date_terminus_list: shapelyutil.pointify(shape for _,shape in date_terminus_list))
+    # Get the centroid of the multipoint; now it's some sort of point within the temrinus region
+    w21tx.df['w21t_tloc'] = w21tx.df['w21t_points'].map(lambda mpt: mpt.centroid)
 
     # Join back with w21
     w21 = d_w21.read(map_wkt)
@@ -103,7 +105,7 @@ def select_glaciers_main():
             else x['ns481_poly'].intersection(x['fj_poly']).area / x['fj_poly'].area,
             axis=1)
 
-    match.df.sort_values(['w21t_ix'])
+#    match.df.sort_values(['w21t_ix'])
 
     try:
         select = match.left_join(overrides=over[['w21_key', 'ns481_key']])
@@ -151,7 +153,15 @@ def select_glaciers_main():
     # ----- Join with NSIDC-0642 (MEASURES) annual termini
     ns642 = uafgi.data.ns642.read(uafgi.data.wkt.nsidc_ps_north)
     # Combine all points for each GlacierID
-    ns642x = uafgi.data.ns642.by_glacier_id(ns642)
+#    ns642x = uafgi.data.ns642.by_glacier_id(ns642)
+
+    ns642x = uafgi.data.ns642.termini_by_glacier(ns642)
+
+    # Convert [(date, terminus), ...] into a MultiPoint object
+    ns642x.df['ns642_points'] = ns642x.df['ns642_date_termini'].map(
+            lambda date_terminus_list: shapelyutil.pointify(shape for _,shape in date_terminus_list))
+
+    print('******** ns642x {}'.format(ns642x.df.columns))
 
     match = pdutil.match_point_poly(
         ns642x, 'ns642_points', select, 'fj_poly').swap()
@@ -161,7 +171,7 @@ def select_glaciers_main():
 #    print('xyz1', match.df.columns)
     select = match.left_join(overrides=over)
 
-
+#    select.df = pdutil.merge_nodups(select.df, 
     return select
 
 
@@ -175,18 +185,8 @@ def select_glaciers_main():
     # Don't do this yet, it repeats rows...
     # select.df = pdutil.merge_nodups(select.df, w21t.df, how='left', on='w21t_Glacier')
     
-#    print(select.df[['w21_popular_name', 'w21_coast', 'ns481_grid', 'cf20_key', 'ns642_key']])
-#    print(select.df[['w21_popular_name', 'lat', 'lon', 'w21_coast', 'ns481_grid', 'fj_poly', 'cf20_key']])
-
-
-    print(select.df[['w21_popular_name']])
     selT,selF = pdutil.split_na(select.df, 'cf20_key')
-    print(selT.columns)
     cols = ['w21_popular_name', 'w21_coast', 'ns481_grid', 'cf20_key', 'ns642_key']
-    print('xxxxxxxxxxxxxxxxxxxxxxx')
-    print(selT[cols])
-    print('xxxxxxxxxxxxxxxxxxxxxxx')
-    print(selF[cols])
 
     os.makedirs(uafgi.data.join_outputs('stability'), exist_ok=True)
     with open(uafgi.data.join_outputs('stability/01_select.dfx'), 'wb') as out:
