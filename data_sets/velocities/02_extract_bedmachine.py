@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from uafgi import gdalutil,bedmachine,glacier,make
+from uafgi import gdalutil,bedmachine,glacier,make,pdutil
 import uafgi.wkt
 import uafgi.data
 import uafgi.data.ns642
@@ -66,7 +66,7 @@ def render_bedmachine_makefile(select):
         # Localize the ItsLive file
         rule = uafgi.data.itslive.merge_to_pism_rule(grid,
             uafgi.data.itslive.ItsliveMerger,
-            datetime.datetime(2011,1,1), datetime.datetime(2019,1,1))
+            datetime.datetime(1985,1,1), datetime.datetime(2019,1,1))
 
         makefile.add(rule)
         targets.append(rule.outputs[0])
@@ -98,8 +98,9 @@ def render_bedmachine_makefile(select):
     makefile.generate(targets, '02_extract_bedmachine.mk')
 
 def main():
-    select = pd.read_pickle(uafgi.data.join_outputs('stability', '01_select.df'))
-    render_bedmachine_makefile(select)
+    #select = pd.read_pickle(uafgi.data.join_outputs('stability', '01_select.df'))
+    select = pdutil.ExtDf.read_pickle(uafgi.data.join_outputs('stability', '01_select.dfx'))
+    render_bedmachine_makefile(select.df)
     print('Finished rendering Makefile.\n    Run with ./02_extract_bedmachine.mk/make')
 
 main()
