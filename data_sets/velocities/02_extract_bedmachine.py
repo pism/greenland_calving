@@ -45,6 +45,42 @@ def bedmachine_local_rule(ns481_grid):
         [ofname])
 
 # -------------------------------------------------------------
+def gimpdem_local_rule(ns481_grid):
+    """Creates a localized GIMP DEM file for a MEASURES grid"""
+
+    ifname = uafgi.data.measures_grid_file(ns481_grid)
+    ofname = uafgi.data.gimpdem_local(ns481_grid)
+    gimpdem_tif = uafgi.data.join('gimpdem-nsidc0645', 'gimpdem_90m_v01.1.tif')
+
+    def action(tdir):
+        import uafgi.data
+        from uafgi import gdalutil
+        import subprocess
+
+        os.makedirs(os.path.dirname(ofname), exist_ok=True)
+
+        grid_file = uafgi.data.measures_grid_file(ns481_grid)
+        fb = gdalutil.FileInfo(grid_file)
+
+        cmd = ['gdal_translate',
+            '-r', 'average',
+            '-projwin', str(fb.x.low), str(fb.y.high), str(fb.x.high), str(fb.y.low),
+            '-tr', str(fb.x.delta), str(fb.y.delta),
+            gimpdem_tif,
+            ofname]
+
+        subprocess.run(cmd, check=True)
+
+        cmd = ['ncrename', '-v', 'Band1,elevation', ofname]
+        subprocess.run(cmd, check=True)
+
+
+    return make.Rule(
+        action,
+        [gimpdem_tif, ifname],
+        [ofname])
+
+# -------------------------------------------------------------
 def render_bedmachine_makefile(select):
     """Given a Glacier selection, creates a Makefile to create all the
     localized BedMachine files required for it."""
@@ -54,10 +90,16 @@ def render_bedmachine_makefile(select):
     # Make the global BedMachine file (compressed, for PISM)
     makefile.add(bedmachine_global_rule())
 
-    # Make the localized BedMachine extracts
     targets = list()
+    # Make the localized BedMachine extracts
     for grid in select['ns481_grid']:
         rule = bedmachine_local_rule(grid)
+        makefile.add(rule)
+        targets.append(rule.outputs[0])
+
+    # Make the localized GimpDEM extracts
+    for grid in select['ns481_grid']:
+        rule = gimpdem_local_rule(grid)
         makefile.add(rule)
         targets.append(rule.outputs[0])
 
