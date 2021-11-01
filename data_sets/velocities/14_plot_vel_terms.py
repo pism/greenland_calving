@@ -1,3 +1,5 @@
+#import datetime
+import traceback
 import subprocess
 import cartopy.crs
 import collections
@@ -75,7 +77,13 @@ class GlacierPlots:
         selrow = self.select.df.loc[glacier_id]
 
          # Select just ACTUAL termini, no "sample" future termini.
+#        print(self.velterm_df)
+#        print(self.velterm_df['glacier_id'].unique())
+#        print('xxxxxx ',glacier_id)
+#        print('gggggggggggggggg ', glacier_df)
+
         glacier_df = glacier_df0[glacier_df0.term_year < 2020]
+
 
         # Useonly termini since 2000
         df = glacier_df[
@@ -88,26 +96,25 @@ class GlacierPlots:
         df['up_len_km'] = df['up_area'] / (selrow.w21_mean_fjord_width * 1e6)
 
         # Order by amount-retreated (instead of year)
-        df = df[['up_len_km', 'term_year', 'fluxratio']].groupby('up_len_km').mean()
+        gdf = df[['up_len_km', 'term_year', 'fluxratio']].groupby('up_len_km').mean()
           
 #        fig, axs = plt.subplots(2,2, figsize=(8.5,11))
         # https://towardsdatascience.com/customizing-multiple-subplots-in-matplotlib-a3e1c2e099bc
         fig = plt.figure(figsize=(8.5,11))
-        spec = matplotlib.gridspec.GridSpec(ncols=2, nrows=2,
-            height_ratios=[1,2])
-
+        spec = matplotlib.gridspec.GridSpec(ncols=3, nrows=3,
+            height_ratios=[.5,.5,2])
 
         # -----------------------------------------------------------
         # (0,0): Sigma by up_len_km
         #df = df.rename(columns={'fluxratio':'past'}).reset_index()
-        ax1 = fig.add_subplot(spec[0,0])
-        df.sort_values('up_len_km')
-        df = df.rename(columns={'fluxratio': 'sigma'})
-        df[['sigma']].plot(ax=ax1,marker='o')
+        ax1 = fig.add_subplot(spec[0:2,0])
+        gdf.sort_values('up_len_km')
+        gdf = gdf.rename(columns={'fluxratio': 'sigma'})
+        gdf[['sigma']].plot(ax=ax1,marker='o')
         ax1.invert_xaxis()
         ax1.yaxis.set_label('sigma (kPa)')
         axr = ax1.twinx()
-        df[['term_year']].plot(ax=axr,color='red', marker="x", linestyle="None")
+        gdf[['term_year']].plot(ax=axr,color='red', marker="x", linestyle="None")
 
         # -----------------------------------------------------------
         # (0,1): Retreat by year
@@ -115,12 +122,62 @@ class GlacierPlots:
         ax2.yaxis.set_visible(False)    # Axis on left
         axr = ax2.twinx()
 #        ax2.yaxis.set_label_position("right")
-        pldf = df[['term_year']].reset_index().set_index('term_year').sort_index()
+        pldf = gdf[['term_year']].reset_index().set_index('term_year').sort_index()
         pldf.plot(ax=axr)
 
         lrr = scipy.stats.linregress(pldf.index.to_list(), pldf['up_len_km'].to_list())
         x = np.array([2000, 2020])
         plt.plot(x, lrr.intercept + lrr.slope*x, 'grey')
+
+        # -----------------------------------------------------------
+        # (0,2); Wood et al plot
+        ax = fig.add_subplot(spec[0:2,2])
+
+        # Shrink current axes' height by 20%
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0 + box.height*.2,
+                 box.width, box.height * 0.8])
+
+        data_fname = '{} Data.nc'.format(selrow['w21t_Glacier'])
+        df = d_w21.glacier_cumulative_df(data_fname)
+#        df = df.loc[datetime.datetime(2000,1,1):]
+        df = df.loc[2000:]
+
+        # Convert to rates [km a-1]
+        cols = dict([(cname, df[cname].diff()) for cname in df.columns])
+        dfr = pd.DataFrame.from_dict(cols)
+
+        # compute sigma/sigma_max
+        #sigma_pct = 1. - (dfr['ice_advection'] - dfr['calving']) / dfr['ice_advection']
+
+        #dfr['advdiff'] = dfr['ice_advection'] - dfr['calving']
+
+#        dfr['sigma_pct'] = np.log(sigma_pct)
+        #dfr[['sigma_pct']].plot()
+        #dfr[['advdiff', 'ice_advection']].plot(markersize=120)
+        #dfr.plot()
+        ax.yaxis.set_visible(False)    # Axis on left
+        ax = ax.twinx()
+        df.plot(ax=ax)
+
+        # Put a legend below current axis
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.5),
+          fancybox=True, shadow=True, ncol=1)
+
+        #sigma_pct.plot()
+        #plt.title(data_fname)
+
+        # -----------------------------------------------------------
+        # (0,1); Wood calving to flux ratio
+        ax = fig.add_subplot(spec[1,1])
+        ax.yaxis.set_visible(False)    # Axis on left
+        ax = ax.twinx()
+
+        df['calving_by_advect'] = -dfr['calving'] / dfr['ice_advection']
+        df[['calving_by_advect']].plot(ax=ax)
+
+
+
 
         # -----------------------------------------------------------
         # (1,0): Map
@@ -134,7 +191,7 @@ class GlacierPlots:
             yy = nc.variables['y'][:]
 
         # Set up the basemap
-        ax = fig.add_subplot(spec[1,:], projection=mapinfo.crs)
+        ax = fig.add_subplot(spec[2,:], projection=mapinfo.crs)
         ax.set_extent(mapinfo.extents, crs=mapinfo.crs)
         ax.coastlines(resolution='50m')
 
@@ -148,7 +205,7 @@ class GlacierPlots:
         cmap,_,_ = cptutil.read_cpt('caribbean.cpt')
         pcm = ax.pcolormesh(
             xx, yy, bedm, transform=mapinfo.crs,
-            cmap=cmap)
+            cmap=cmap, vmin=-1000, vmax=0)
         cbar = fig.colorbar(pcm, ax=ax)
         cbar.set_label('Fjord Bathymetry (m)')
         
@@ -202,6 +259,10 @@ def main():
 
     gp = GlacierPlots()
     for ix,(glacier_id,row) in enumerate(gp.select.df.iterrows()):
+#        print('glacier_id = ', glacier_id)
+#        if glacier_id != 1:
+#            continue
+
         root = 'gg{:03d}'.format(ix)
         pdf = root + '.pdf'
         if os.path.exists(pdf):
@@ -210,12 +271,14 @@ def main():
         print('------------ glacier_id {}'.format(glacier_id))
         try:
             fig = gp.plot_glacier(glacier_id)
-        except Exception as e:
-            print(e)
+        except Exception:
+            traceback.print_exc()
             continue
 
         print('Saving {}'.format(root))
         fig.savefig(root+'.png', dpi=300)
+#        break
+
         cmd = ['convert', root+'.png', root+'.pdf']
         subprocess.run(cmd)
 
