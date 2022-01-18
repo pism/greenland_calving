@@ -33,35 +33,6 @@ map_wkt = uafgi.data.wkt.nsidc_ps_north
 #pd.set_option("display.max_rows", 30, "display.max_columns", None)
 #pd.set_option("display.max_rows", 200, "display.max_columns", None)
 
-MapInfo = collections.namedtuple('MapInfo', ('crs', 'extents'))
-def nc_mapinfo(nc, ncvarname):
-    """Setup a map from CF-compliant stuff"""
-
-    nx = len(nc.dimensions['x'])
-    ny = len(nc.dimensions['y'])
-
-    ncvar = nc[ncvarname]
-    map_crs = cartopyutil.crs(ncvar.spatial_ref)
-
-#    map_crs = cartopy.crs.Stereographic(
-#        central_latitude=90,
-#        central_longitude=-45,
-#        false_easting=0, false_northing=0,
-#        true_scale_latitude=70, globe=None)
-
-    print('map_crs ', map_crs)
-
-    # Read extents from the NetCDF geotransform
-    geotransform = [float(x) for x in ncvar.GeoTransform.split(' ') if x != '']
-    x0 = geotransform[0]
-    x1 = x0 + geotransform[1] * nx
-    y0 = geotransform[3]
-    y1 = y0 + geotransform[5] * ny
-    extents = [x0,x1,y0,y1]
-
-    return MapInfo(map_crs, extents)
-#    ax.set_extent(extents=extents, crs=map_crs)
-#    return map_crs
 
 
 class GlacierPlots:
@@ -185,7 +156,7 @@ class GlacierPlots:
         bedmachine_file = uafgi.data.join_outputs('bedmachine', 'BedMachineGreenland-2017-09-20_{}.nc'.format(selrow.ns481_grid))
         with netCDF4.Dataset(bedmachine_file) as nc:
             nc.set_auto_mask(False)
-            mapinfo = nc_mapinfo(nc, 'polar_stereographic')
+            mapinfo = cartopyutil.nc_mapinfo(nc, 'polar_stereographic')
             bed = nc.variables['bed'][:]
             xx = nc.variables['x'][:]
             yy = nc.variables['y'][:]
