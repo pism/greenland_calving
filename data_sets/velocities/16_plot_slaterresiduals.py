@@ -13,33 +13,38 @@ import pandas as pd
 
 map_wkt = uafgi.data.wkt.nsidc_ps_north
 
+#margin=(.17,.15,.83,.85)    # left, bottom, width, height
+margin=(.15,.15,.98,.98)    # left, bottom, right, top
+def _rect(*delta):
+    mm = [m+d for m,d in zip(margin,delta)]
+    return (mm[0], mm[1], mm[2]-mm[0], mm[3]-mm[1])
 
-margin=(.15,.15,.85,.85)
 def plot_year_termpos(fig, slfit):
     """Plots year vs melt and year vs terminus position"""
 
-    ax1 = fig.add_axes(margin)
-    ax = ax1.twinx()
+    ax = fig.add_axes(_rect(0,0, -.12,0))
+    ax1 = ax.twinx()
 
     print('Slater termpos by year')
 
-    # Left axis: melt by year
-    ax.plot(slfit.bbins, slfit.melt_b, marker='.', color='green')
-    ax.set_ylabel('Melt')
-
-    # Right y-axis: terminal position by year
-    ax1.set_xlabel('Year', fontsize=14)
-    ax1.set_ylabel('Slater Terminus', fontsize=14)
-    ax1.plot(slfit.bbins, slfit.termpos_b, marker='.')
+    # Left y-axis: terminal position by year
+    ax.set_xlabel('Year', fontsize=14)
+    ax.set_ylabel('Slater Terminus (km)', fontsize=14)
+    ax.plot(slfit.bbins, slfit.termpos_b, marker='.')
     lr = slfit.termpos_lr
-    ax1.plot(slfit.bbins1, lr.slope*slfit.up_len_km_b1 + lr.intercept, marker='.')
+    ax.plot(slfit.bbins1, lr.slope*slfit.up_len_km_b1 + lr.intercept, marker='.')
+
+    # Right axis: melt by year
+    ax1.plot(slfit.bbins, slfit.melt_b, marker='.', color='green')
+    ax1.set_ylabel('Melt')
+
 
 
 def plot_uplen_termpos(fig, slfit):
     """
     slfit: FitSlaterResidualsRet
     """
-    ax = fig.add_axes(margin)
+    ax = fig.add_axes(_rect(.02,0, 0,0))
 
     _ = slfit    # shortcut
     #print('up_len_km (x) vs. Slater termpos (y)')
@@ -48,13 +53,13 @@ def plot_uplen_termpos(fig, slfit):
     ax.plot(
         _.up_len_km_b1,
         _.termpos_lr.slope*_.up_len_km_b1 + _.termpos_lr.intercept)
-    ax.set_xlabel('MEASURES Terminus', fontsize=14)
-    ax.set_ylabel('Slater Terminus', fontsize=14)
+    ax.set_xlabel('MEASURES Terminus (km)', fontsize=14)
+    ax.set_ylabel('Slater Terminus (km)', fontsize=14)
 
 def plot_melt_termpos(fig, slfit):
     """Plotsmelt vs. termpos, 5-year bins (dup of Slater's plot)"""
 
-    ax = fig.add_axes(margin)
+    ax = fig.add_axes(_rect(0,0,0,0))
 
     lr = slfit.slater_lr
     ax.scatter(slfit.melt_b, slfit.termpos_b)
@@ -64,14 +69,14 @@ def plot_melt_termpos(fig, slfit):
 
 def plot_termpos_residuals(fig, slfit):
 
-    ax = fig.add_axes(margin)
+    ax = fig.add_axes(_rect(0,0,0,0))
 
     df = slfit.resid_df
     lr = slfit.resid_lr
     ax.scatter(df.fluxratio*1e-3, df.termpos_residual)
     ax.plot(df.fluxratio*1e-3, df.fluxratio * lr.slope + lr.intercept)
-    ax.set_xlabel('von Mises Sigma Across Terminus (kPa)', fontsize=14)
-    ax.set_ylabel('Slater Terminus Residual', fontsize=14)
+    ax.set_xlabel('von Mises \u03C3 Across Terminus (kPa)', fontsize=14)    # Sigma
+    ax.set_ylabel('Slater Terminus Residual (km)', fontsize=14)
 
 
 def plot_page(odir, selrow, velterm_df):
@@ -96,12 +101,12 @@ def plot_page(odir, selrow, velterm_df):
             Title1='Terminus (L) vs Melt (R)',
             Title2='Terminus Translation',
             Title3='Melt vs. Terminus (5-yr)',
-            Title4=r'Sigma vs. Terminus Residuals \\ \tiny {}slope={:1.3f}, R={:1.2f}, p={:1.4f}{}'.format(
-                '{', rlr.slope*1000, abs(rlr.rvalue), rlr.pvalue, '}'),
+            Title4=r'{} vs. Terminus Residuals \\ \tiny {}slope={:1.3f}, R={:1.2f}, p={:1.4f}{}'.format(
+                r'$\sigma$', '{', rlr.slope*1000, abs(rlr.rvalue), rlr.pvalue, '}'),
         ))
 
 
-    small = (4.5,4.5)
+    small = (5.5,4.5)
     for fname,size, do_plot in [
         ('uplen_termpos.png', small, lambda fig: plot_uplen_termpos(fig, slfit)),
         ('year_termpos.png', small, lambda fig: plot_year_termpos(fig, slfit)),
@@ -159,7 +164,7 @@ def main():
                 os.rename(os.path.join(tdir.location, 'page.pdf'), ofname)
                 row['plot_page'] = leaf
                 rows.append(row)
-#                break
+                #break        # DEBUG: Just one plot
             except Exception as e:
                 traceback.print_exc()
 
@@ -194,14 +199,14 @@ page_tpl = string.Template(r"""
 \begin{Cell}{1}
 \begin{center}
 $Title1 \\
-\includegraphics[width=.8\textwidth]{year_termpos}
+\includegraphics[width=.9\textwidth]{year_termpos}
 \end{center}
 \end{Cell}
 
 \begin{Cell}{1}
 \begin{center}
 $Title2 \\
-\includegraphics[width=.8\textwidth]{uplen_termpos}
+\includegraphics[width=.9\textwidth]{uplen_termpos}
 \end{center}
 \end{Cell}
 
@@ -211,14 +216,14 @@ $Title2 \\
 \begin{Cell}{1}
 \begin{center}
 $Title3 \\
-\includegraphics[width=.8\textwidth]{melt_termpos}
+\includegraphics[width=.9\textwidth]{melt_termpos}
 \end{center}
 \end{Cell}
 
 \begin{Cell}{1}
 \begin{center}
 $Title4 \\
-\includegraphics[width=.8\textwidth]{termpos_residuals}
+\includegraphics[width=.9\textwidth]{termpos_residuals}
 \end{center}
 \end{Cell}
 
