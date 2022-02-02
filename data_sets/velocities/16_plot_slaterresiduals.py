@@ -29,14 +29,14 @@ def plot_year_termpos(fig, slfit):
 
     # Left y-axis: terminal position by year
     ax.set_xlabel('Year', fontsize=14)
-    ax.set_ylabel('Slater Terminus (km)', fontsize=14)
+    ax.set_ylabel('Terminus (km)', fontsize=14)
     ax.plot(slfit.bbins, slfit.termpos_b, marker='.')
     lr = slfit.termpos_lr
     ax.plot(slfit.bbins1, lr.slope*slfit.up_len_km_b1 + lr.intercept, marker='.')
 
     # Right axis: melt by year
     ax1.plot(slfit.bbins, slfit.melt_b, marker='.', color='green')
-    ax1.set_ylabel('Melt')
+    ax1.set_ylabel('Melt($Q^{0.4}$ TF)')
 
 
 
@@ -64,8 +64,8 @@ def plot_melt_termpos(fig, slfit):
     lr = slfit.slater_lr
     ax.scatter(slfit.melt_b, slfit.termpos_b)
     ax.plot(slfit.melt_b, lr.slope*slfit.melt_b + lr.intercept)
-    ax.set_xlabel('Melt (Q^.4 * TF)', fontsize=14)
-    ax.set_ylabel('Slater Terminus', fontsize=14)
+    ax.set_xlabel('Melt ($Q^{0.4}$ TF)', fontsize=14)
+    ax.set_ylabel('Slater Terminus (km)', fontsize=14)
 
 def plot_termpos_residuals(fig, slfit):
 
@@ -98,7 +98,7 @@ def plot_page(odir, selrow, velterm_df):
                 selrow['ns481_grid'],
                 selrow.w21t_Glacier,
                 selrow.w21t_glacier_number, int(selrow.sl19_rignotid)),
-            Title1='Terminus (L) vs Melt (R)',
+            Title1=r'Terminus and Melt \\ \tiny{blue: Slater Terminus; orange: MEASURES Terminus; green: Melt}',
             Title2='Terminus Translation',
             Title3='Melt vs. Terminus (5-yr)',
             Title4=r'{} vs. Terminus Residuals \\ \tiny {}slope={:1.3f}, R={:1.2f}, p={:1.4f}{}'.format(
