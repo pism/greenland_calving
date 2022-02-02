@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import numpy as np
 import traceback
+import pandas as pd
 
 map_wkt = uafgi.data.wkt.nsidc_ps_north
 
@@ -23,13 +24,13 @@ def plot_year_termpos(fig, slfit):
     print('Slater termpos by year')
 
     # Left axis: melt by year
-    ax.plot(slfit.bbins1l, slfit.melt_b1l, marker='.')
+    ax.plot(slfit.bbins, slfit.melt_b, marker='.', color='green')
     ax.set_ylabel('Melt')
 
     # Right y-axis: terminal position by year
     ax1.set_xlabel('Year', fontsize=14)
     ax1.set_ylabel('Slater Terminus', fontsize=14)
-    ax1.plot(slfit.bbins1l, slfit.termpos_b1l, marker='.')
+    ax1.plot(slfit.bbins, slfit.termpos_b, marker='.')
     lr = slfit.termpos_lr
     ax1.plot(slfit.bbins1, lr.slope*slfit.up_len_km_b1 + lr.intercept, marker='.')
 
@@ -67,9 +68,9 @@ def plot_termpos_residuals(fig, slfit):
 
     df = slfit.resid_df
     lr = slfit.resid_lr
-    ax.scatter(df.fluxratio, df.termpos_residual)
-    ax.plot(df.fluxratio, df.fluxratio * lr.slope + lr.intercept)
-    ax.set_xlabel('von Mises Sigma Across Terminus', fontsize=14)
+    ax.scatter(df.fluxratio*1e-3, df.termpos_residual)
+    ax.plot(df.fluxratio*1e-3, df.fluxratio * lr.slope + lr.intercept)
+    ax.set_xlabel('von Mises Sigma Across Terminus (kPa)', fontsize=14)
     ax.set_ylabel('Slater Terminus Residual', fontsize=14)
 
 
@@ -80,6 +81,12 @@ def plot_page(odir, selrow, velterm_df):
     slfit = stability.fit_slater_residuals(selrow, velterm_df)
     rlr = slfit.resid_lr
 
+#    if rlr.pvalue > 0.15:
+#        raise ValueError('Residual Fit Not Significant')
+#
+#    if abs(slfit.up_len_km_b1[-1] - slfit.up_len_km_b1[0]) < .8:
+#        raise ValueError('Not Enough Retreat')
+
     with open(os.path.join(odir, 'page.tex'), 'w') as out:
         out.write(page_tpl.substitute(
             TITLE='{} - {} - w={} r={}'.format(
@@ -89,8 +96,8 @@ def plot_page(odir, selrow, velterm_df):
             Title1='Terminus (L) vs Melt (R)',
             Title2='Terminus Translation',
             Title3='Melt vs. Terminus (5-yr)',
-            Title4=r'Sigma vs. Terminus Residuals \\ \tiny {}R={:1.2f}, p={:1.4f}{}'.format(
-                '{', abs(rlr.rvalue), rlr.pvalue, '}'),
+            Title4=r'Sigma vs. Terminus Residuals \\ \tiny {}slope={:1.3f}, R={:1.2f}, p={:1.4f}{}'.format(
+                '{', rlr.slope*1000, abs(rlr.rvalue), rlr.pvalue, '}'),
         ))
 
 
@@ -105,10 +112,20 @@ def plot_page(odir, selrow, velterm_df):
         fig = matplotlib.pyplot.figure(figsize=size)
         do_plot(fig)
         fig.savefig(os.path.join(odir, fname))
+        fig.clf()
 
     cmd = ['pdflatex', 'page.tex']
     subprocess.run(cmd, cwd=odir, check=True)
 
+    # Return the data we computed along the way
+    ret = slfit._asdict()
+    del ret['glacier_df']
+
+    rdf = ret['resid_df']
+    for field in ('term_year', 'fluxratio', 'termpos_residual'):
+        ret[field] = rdf[field].values
+    del ret['resid_df']
+    return ret
 
 def main():
 
@@ -119,26 +136,35 @@ def main():
     os.makedirs(odir, exist_ok=True)
     selrow = select.df.iloc[11]
 
+    rows = list()
     for ix,selrow in select.df.iterrows():
         if np.isnan(selrow.sl19_rignotid):
+            # No Slater19 data
             continue
 
         print('========================= ix = {}'.format(ix))
-        ofname = os.path.join(odir, '{}_{}_{}.pdf'.format(
+        leaf = '{}_{}_{}.pdf'.format(
             selrow.ns481_grid.replace('.',''),
             selrow.w21t_glacier_number,
-            selrow.w21t_Glacier.replace('_','-').replace('.','')))
+            selrow.w21t_Glacier.replace('_','-').replace('.',''))
+        ofname = os.path.join(odir, leaf)
 
         # Quicker debugging
-        if os.path.exists(ofname):
-            continue
+#        if os.path.exists(ofname):
+#            continue
 
         with ioutil.TmpDir() as tdir:
             try:
-                plot_page(tdir.location, selrow, velterm_df)
+                row = plot_page(tdir.location, selrow, velterm_df)
                 os.rename(os.path.join(tdir.location, 'page.pdf'), ofname)
+                row['plot_page'] = leaf
+                rows.append(row)
+#                break
             except Exception as e:
                 traceback.print_exc()
+
+    df = pd.DataFrame(rows)
+    df.to_pickle('16_slfit.df')
 
 
 
