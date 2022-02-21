@@ -1,7 +1,8 @@
 import uafgi.data.wkt
-from uafgi import stability,ioutil
+from uafgi import stability,ioutil,cptutil
 import uafgi.data.stability as d_stability
 from uafgi.data import d_velterm
+import mpl_toolkits.axes_grid1
 import os
 import matplotlib.pyplot
 import string
@@ -16,6 +17,12 @@ map_wkt = uafgi.data.wkt.nsidc_ps_north
 #margin=(.17,.15,.83,.85)    # left, bottom, width, height
 margin=(.15,.15,.98,.98)    # left, bottom, right, top
 def _rect(*delta):
+    """
+    delta: (left margin, bottom margin, right margin, top margin)
+        Change to standard margins
+        For right and top, negative number means bigger margin
+    """
+
     mm = [m+d for m,d in zip(margin,delta)]
     return (mm[0], mm[1], mm[2]-mm[0], mm[3]-mm[1])
 
@@ -35,8 +42,8 @@ def plot_year_termpos(fig, slfit):
     ax.plot(slfit.bbins1, lr.slope*slfit.up_len_km_b1 + lr.intercept, marker='.')
 
     # Right axis: melt by year
-    ax1.plot(slfit.bbins, slfit.melt_b, marker='.', color='green')
-    ax1.set_ylabel('Melt($Q^{0.4}$ TF)')
+    ax1.plot(slfit.bbins1l, slfit.melt_b1l, marker='.', color='green')
+    ax1.set_ylabel('Melt ($Q^{0.4}$ TF)')
 
 
 
@@ -56,14 +63,46 @@ def plot_uplen_termpos(fig, slfit):
     ax.set_xlabel('MEASURES Terminus (km)', fontsize=14)
     ax.set_ylabel('Slater Terminus (km)', fontsize=14)
 
+sigma_by_velyear_cmap,_,_ = cptutil.read_cpt('pride_flag_1978x.cpt')
+
+def plot_sigma_by_velyear(fig, slfit):
+
+    # Set up mapping between vel_year and color
+    cmap = sigma_by_velyear_cmap
+    norm = matplotlib.colors.Normalize(vmin=1980, vmax=2000, clip=True)
+    mapper = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
+
+    # Create axes for main plot and colorbar
+    ax = fig.add_axes(_rect(.0,0, -.15,0))
+    divider = mpl_toolkits.axes_grid1.make_axes_locatable(ax)   # Make room for colorscale
+    cax = divider.append_axes('right', size='3%', pad=0.05)
+
+    # Plot main plot
+    for vel_year,df in slfit.glacier_df.groupby('vel_year'):
+        df['fluxratio'] = df['fluxratio'] / 1000.   # Convert to kPa
+        ax.plot(df.set_index('term_year')[['fluxratio']], linewidth=.5,marker='.', color=mapper.to_rgba(vel_year))
+    ax.xaxis.set_major_locator(matplotlib.ticker.FixedLocator([2000,2005,2010,2015,2020]))
+    ax.set_xlabel('Terminus Year')
+    ax.set_ylabel('von Mises $\sigma$ across Terminus (kpa)')
+
+    # Plot colorbar
+    cb1 = matplotlib.colorbar.ColorbarBase(
+        cax, cmap=cmap, norm=norm,
+        orientation='vertical')
+    cb1.set_label('Surface Velocity Year')
+    cb1.locator = matplotlib.ticker.FixedLocator([1980,1984,1988,1992,1996,2000,])
+    cb1.update_ticks()
+
+
 def plot_melt_termpos(fig, slfit):
     """Plotsmelt vs. termpos, 5-year bins (dup of Slater's plot)"""
 
     ax = fig.add_axes(_rect(0,0,0,0))
 
     lr = slfit.slater_lr
-    ax.scatter(slfit.melt_b, slfit.termpos_b)
-    ax.plot(slfit.melt_b, lr.slope*slfit.melt_b + lr.intercept)
+    ax.scatter(slfit.melt_b1, slfit.termpos_b)
+    ax.plot(slfit.melt_b1, lr.slope*slfit.melt_b1 + lr.intercept)
+    ax.xaxis.set_major_locator(matplotlib.ticker.FixedLocator([2000,2005,2010,2015,2020]))
     ax.set_xlabel('Melt ($Q^{0.4}$ TF)', fontsize=14)
     ax.set_ylabel('Slater Terminus (km)', fontsize=14)
 
@@ -100,7 +139,8 @@ def plot_page(odir, selrow, velterm_df):
                 selrow.w21t_glacier_number, int(selrow.sl19_rignotid)),
             Title1=r'Terminus and Melt \\ \tiny{blue: Slater Terminus; orange: MEASURES Terminus; green: Melt}',
             Title2='Terminus Translation',
-            Title3='Melt vs. Terminus (5-yr)',
+            Title3='$\sigma$ by Velocity Year',
+            #Title3='Melt vs. Terminus (5-yr)',
             Title4=r'{} vs. Terminus Residuals \\ \tiny {}slope={:1.3f}, R={:1.2f}, p={:1.4f}{}'.format(
                 r'$\sigma$', '{', rlr.slope*1000, abs(rlr.rvalue), rlr.pvalue, '}'),
         ))
@@ -110,7 +150,8 @@ def plot_page(odir, selrow, velterm_df):
     for fname,size, do_plot in [
         ('uplen_termpos.png', small, lambda fig: plot_uplen_termpos(fig, slfit)),
         ('year_termpos.png', small, lambda fig: plot_year_termpos(fig, slfit)),
-        ('melt_termpos.png', small, lambda fig: plot_melt_termpos(fig, slfit)),
+#        ('melt_termpos.png', small, lambda fig: plot_melt_termpos(fig, slfit)),
+        ('sigma_by_year.png', small, lambda fig: plot_sigma_by_velyear(fig, slfit)),
         ('termpos_residuals.png', small, lambda fig: plot_termpos_residuals(fig, slfit)),
         ('map.png', (8.,4.), lambda fig: stability.plot_reference_map(fig, selrow))]:
 
@@ -146,6 +187,9 @@ def main():
         if np.isnan(selrow.sl19_rignotid):
             # No Slater19 data
             continue
+
+#        if selrow.w21t_glacier_number != 65:
+#            continue
 
         print('========================= ix = {}'.format(ix))
         leaf = '{}_{}_{}.pdf'.format(
@@ -216,7 +260,7 @@ $Title2 \\
 \begin{Cell}{1}
 \begin{center}
 $Title3 \\
-\includegraphics[width=.9\textwidth]{melt_termpos}
+\includegraphics[width=.9\textwidth]{sigma_by_year}
 \end{center}
 \end{Cell}
 
