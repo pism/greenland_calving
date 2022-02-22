@@ -69,7 +69,7 @@ def plot_sigma_by_velyear(fig, slfit):
 
     # Set up mapping between vel_year and color
     cmap = sigma_by_velyear_cmap
-    norm = matplotlib.colors.Normalize(vmin=1980, vmax=2000, clip=True)
+    norm = matplotlib.colors.Normalize(vmin=1980, vmax=2020, clip=True)
     mapper = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
 
     # Create axes for main plot and colorbar
@@ -90,7 +90,8 @@ def plot_sigma_by_velyear(fig, slfit):
         cax, cmap=cmap, norm=norm,
         orientation='vertical')
     cb1.set_label('Surface Velocity Year')
-    cb1.locator = matplotlib.ticker.FixedLocator([1980,1984,1988,1992,1996,2000,])
+#    cb1.locator = matplotlib.ticker.FixedLocator([1980,1984,1988,1992,1996,2000,])
+    cb1.locator = matplotlib.ticker.FixedLocator([1980,1985,1990,1995,2000,2005,2010,2015,2020])
     cb1.update_ticks()
 
 
@@ -100,8 +101,8 @@ def plot_melt_termpos(fig, slfit):
     ax = fig.add_axes(_rect(0,0,0,0))
 
     lr = slfit.slater_lr
-    ax.scatter(slfit.melt_b1, slfit.termpos_b)
-    ax.plot(slfit.melt_b1, lr.slope*slfit.melt_b1 + lr.intercept)
+    ax.scatter(slfit.melt_b, slfit.termpos_b)
+    ax.plot(slfit.melt_b, lr.slope*slfit.melt_b + lr.intercept)
     ax.xaxis.set_major_locator(matplotlib.ticker.FixedLocator([2000,2005,2010,2015,2020]))
     ax.set_xlabel('Melt ($Q^{0.4}$ TF)', fontsize=14)
     ax.set_ylabel('Slater Terminus (km)', fontsize=14)
@@ -120,7 +121,7 @@ def plot_termpos_residuals(fig, slfit):
 
 def plot_page(odir, selrow, velterm_df):
     os.makedirs(odir, exist_ok=True)
-    shutil.copy('fontsize.sty', odir)
+#    shutil.copy('fontsize.sty', odir)
 
     slfit = stability.fit_slater_residuals(selrow, velterm_df)
     rlr = slfit.resid_lr
@@ -148,20 +149,23 @@ def plot_page(odir, selrow, velterm_df):
 
     small = (5.5,4.5)
     for fname,size, do_plot in [
-        ('uplen_termpos.png', small, lambda fig: plot_uplen_termpos(fig, slfit)),
-        ('year_termpos.png', small, lambda fig: plot_year_termpos(fig, slfit)),
-#        ('melt_termpos.png', small, lambda fig: plot_melt_termpos(fig, slfit)),
-        ('sigma_by_year.png', small, lambda fig: plot_sigma_by_velyear(fig, slfit)),
-        ('termpos_residuals.png', small, lambda fig: plot_termpos_residuals(fig, slfit)),
-        ('map.png', (8.,4.), lambda fig: stability.plot_reference_map(fig, selrow))]:
+        ('uplen_termpos', small, lambda fig: plot_uplen_termpos(fig, slfit)),
+        ('year_termpos', small, lambda fig: plot_year_termpos(fig, slfit)),
+        ('melt_termpos', small, lambda fig: plot_melt_termpos(fig, slfit)),
+        ('sigma_by_year', small, lambda fig: plot_sigma_by_velyear(fig, slfit)),
+        ('termpos_residuals', small, lambda fig: plot_termpos_residuals(fig, slfit)),
+        ('map', (8.,4.), lambda fig: stability.plot_reference_map(fig, selrow))]:
 
         fig = matplotlib.pyplot.figure(figsize=size)
         do_plot(fig)
-        fig.savefig(os.path.join(odir, fname))
+        fig.savefig(os.path.join(odir, fname+'.png'))
+        fig.savefig(os.path.join(odir, fname+'_300.png'), dpi=300)   # Hi-res version
         fig.clf()
 
     cmd = ['pdflatex', 'page.tex']
-    subprocess.run(cmd, cwd=odir, check=True)
+    env = dict(os.environ.items())
+    env['TEXINPUTS'] = '.:..:../..:'
+    subprocess.run(cmd, cwd=odir, env=env, check=True)
 
     # Return the data we computed along the way
     ret = slfit._asdict()
@@ -192,24 +196,26 @@ def main():
 #            continue
 
         print('========================= ix = {}'.format(ix))
-        leaf = '{}_{}_{}.pdf'.format(
+        leaf = '{}_{}_{}'.format(
             selrow.ns481_grid.replace('.',''),
             selrow.w21t_glacier_number,
             selrow.w21t_Glacier.replace('_','-').replace('.',''))
-        ofname = os.path.join(odir, leaf)
+        odir_gl = os.path.join(odir, leaf)
 
         # Quicker debugging
 #        if os.path.exists(ofname):
 #            continue
 
-        with ioutil.TmpDir() as tdir:
+#        with ioutil.TmpDir() as tdir:
+        if True:
             try:
-                row = plot_page(tdir.location, selrow, velterm_df)
-                os.rename(os.path.join(tdir.location, 'page.pdf'), ofname)
+                row = plot_page(odir_gl, selrow, velterm_df)
+                #os.rename(os.path.join(tdir.location, 'page.pdf'), ofname)
                 row['plot_page'] = leaf
                 rows.append(row)
                 #break        # DEBUG: Just one plot
             except Exception as e:
+                shutil.rmtree(odir_gl, ignore_errors=True)
                 traceback.print_exc()
 
     df = pd.DataFrame(rows)

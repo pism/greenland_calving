@@ -33,7 +33,7 @@ def main():
 
 
     for catname,eles in (('pro',pro), ('con',con), ('insig',insig)):
-        fnames = [os.path.join(odir,row.plot_page) for row in eles]
+        fnames = [os.path.join(odir,row.plot_page, 'page.pdf') for row in eles]
         cmd = ['pdftk'] + fnames + ['cat', 'output', '{}.pdf'.format(catname)]
         subprocess.run(cmd)
 
