@@ -12,6 +12,7 @@ import numpy as np
 import traceback
 import pandas as pd
 
+PUB_ROOT = '/Users/eafischer2/overleaf/CalvingPaper/plots'
 map_wkt = uafgi.data.wkt.nsidc_ps_north
 
 #margin=(.17,.15,.83,.85)    # left, bottom, width, height
@@ -26,8 +27,10 @@ def _rect(*delta):
     mm = [m+d for m,d in zip(margin,delta)]
     return (mm[0], mm[1], mm[2]-mm[0], mm[3]-mm[1])
 
-def plot_year_termpos(fig, slfit):
-    """Plots year vs melt and year vs terminus position"""
+def plot_year_termpos(fig, slfit, pub=False):
+    """Plots year vs melt and year vs terminus position
+    pub: bool
+        Is this for publication?"""
 
     ax = fig.add_axes(_rect(0,0, -.12,0))
     ax1 = ax.twinx()
@@ -35,19 +38,24 @@ def plot_year_termpos(fig, slfit):
     print('Slater termpos by year')
 
     # Left y-axis: terminal position by year
-    ax.set_xlabel('Year', fontsize=14)
-    ax.set_ylabel('Terminus (km)', fontsize=14)
+    if not pub:
+        ax.set_xlabel('Year', fontsize=14)
+        ax.set_ylabel('Terminus (km)', fontsize=14)
     ax.plot(slfit.bbins, slfit.termpos_b, marker='.')
     lr = slfit.termpos_lr
     ax.plot(slfit.bbins1, lr.slope*slfit.up_len_km_b1 + lr.intercept, marker='.')
 
-    # Right axis: melt by year
-    ax1.plot(slfit.bbins1l, slfit.melt_b1l, marker='.', color='green')
-    ax1.set_ylabel('Melt ($Q^{0.4}$ TF)')
+    # ------- Right axis: melt by year
+    # 5-year melt plot
+    ax1.plot(slfit.bbins, slfit.melt_b, marker='.', color='green')
+    # 1-year melt plot
+    # ax1.plot(slfit.bbins1, slfit.melt_b1, marker='.', color='green')
+    if not pub:
+        ax1.set_ylabel('Melt ($Q^{0.4}$ TF)')
 
 
 
-def plot_uplen_termpos(fig, slfit):
+def plot_uplen_termpos(fig, slfit, pub=False):
     """
     slfit: FitSlaterResidualsRet
     """
@@ -60,12 +68,13 @@ def plot_uplen_termpos(fig, slfit):
     ax.plot(
         _.up_len_km_b1,
         _.termpos_lr.slope*_.up_len_km_b1 + _.termpos_lr.intercept)
-    ax.set_xlabel('MEASURES Terminus (km)', fontsize=14)
-    ax.set_ylabel('Slater Terminus (km)', fontsize=14)
+    if not pub:
+        ax.set_xlabel('MEASURES Terminus (km)', fontsize=14)
+        ax.set_ylabel('Slater Terminus (km)', fontsize=14)
 
 sigma_by_velyear_cmap,_,_ = cptutil.read_cpt('pride_flag_1978x.cpt')
 
-def plot_sigma_by_velyear(fig, slfit):
+def plot_sigma_by_velyear(fig, slfit, pub=False):
 
     # Set up mapping between vel_year and color
     cmap = sigma_by_velyear_cmap
@@ -82,20 +91,22 @@ def plot_sigma_by_velyear(fig, slfit):
         df['fluxratio'] = df['fluxratio'] / 1000.   # Convert to kPa
         ax.plot(df.set_index('term_year')[['fluxratio']], linewidth=.5,marker='.', color=mapper.to_rgba(vel_year))
     ax.xaxis.set_major_locator(matplotlib.ticker.FixedLocator([2000,2005,2010,2015,2020]))
-    ax.set_xlabel('Terminus Year')
-    ax.set_ylabel('von Mises $\sigma$ across Terminus (kpa)')
+    if not pub:
+        ax.set_xlabel('Terminus Year')
+        ax.set_ylabel('von Mises $\sigma$ across Terminus (kpa)')
 
     # Plot colorbar
     cb1 = matplotlib.colorbar.ColorbarBase(
         cax, cmap=cmap, norm=norm,
         orientation='vertical')
-    cb1.set_label('Surface Velocity Year')
+    if not pub:
+        cb1.set_label('Surface Velocity Year')
 #    cb1.locator = matplotlib.ticker.FixedLocator([1980,1984,1988,1992,1996,2000,])
     cb1.locator = matplotlib.ticker.FixedLocator([1980,1985,1990,1995,2000,2005,2010,2015,2020])
     cb1.update_ticks()
 
 
-def plot_melt_termpos(fig, slfit):
+def plot_melt_termpos(fig, slfit, pub=False):
     """Plotsmelt vs. termpos, 5-year bins (dup of Slater's plot)"""
 
     ax = fig.add_axes(_rect(0,0,0,0))
@@ -104,10 +115,11 @@ def plot_melt_termpos(fig, slfit):
     ax.scatter(slfit.melt_b, slfit.termpos_b)
     ax.plot(slfit.melt_b, lr.slope*slfit.melt_b + lr.intercept)
     ax.xaxis.set_major_locator(matplotlib.ticker.FixedLocator([2000,2005,2010,2015,2020]))
-    ax.set_xlabel('Melt ($Q^{0.4}$ TF)', fontsize=14)
-    ax.set_ylabel('Slater Terminus (km)', fontsize=14)
+    if not pub:
+        ax.set_xlabel('Melt ($Q^{0.4}$ TF)', fontsize=14)
+        ax.set_ylabel('Slater Terminus (km)', fontsize=14)
 
-def plot_termpos_residuals(fig, slfit):
+def plot_termpos_residuals(fig, slfit, pub=False):
 
     ax = fig.add_axes(_rect(0,0,0,0))
 
@@ -115,11 +127,28 @@ def plot_termpos_residuals(fig, slfit):
     lr = slfit.resid_lr
     ax.scatter(df.fluxratio*1e-3, df.termpos_residual)
     ax.plot(df.fluxratio*1e-3, df.fluxratio * lr.slope + lr.intercept)
-    ax.set_xlabel('von Mises \u03C3 Across Terminus (kPa)', fontsize=14)    # Sigma
-    ax.set_ylabel('Slater Terminus Residual (km)', fontsize=14)
+    if not pub:
+        ax.set_xlabel('von Mises \u03C3 Across Terminus (kPa)', fontsize=14)    # Sigma
+        ax.set_ylabel('Slater Terminus Residual (km)', fontsize=14)
 
 
-def plot_page(odir, selrow, velterm_df):
+# ---------------------------------------------------------
+# Combos we want to publish
+
+_triplet_vars = ('year_termpos', 'termpos_residuals', 'map')
+def triplet(gname):
+    return [(gname,vname) for vname in _triplet_vars]
+
+publish_combos = {
+    ('Hayes N', 'sigma_by_year')
+}
+
+for gname in ('Puisortoq N', 'Puisortoq S', 'Eqip Sermia', 'Gyldenlove N', 'Kujalleq', 'Lille', 'AP Bernstorff', 'Inngia', 'Cornell N', 'Hayes NN'):
+    for x in triplet(gname):
+        publish_combos.add(x)
+# ---------------------------------------------------------
+
+def plot_page(odir, odir_pub, selrow, velterm_df, draft=True, pub=False):
     os.makedirs(odir, exist_ok=True)
 #    shutil.copy('fontsize.sty', odir)
 
@@ -149,23 +178,38 @@ def plot_page(odir, selrow, velterm_df):
 
     small = (5.5,4.5)
     for fname,size, do_plot in [
-        ('uplen_termpos', small, lambda fig: plot_uplen_termpos(fig, slfit)),
-        ('year_termpos', small, lambda fig: plot_year_termpos(fig, slfit)),
-        ('melt_termpos', small, lambda fig: plot_melt_termpos(fig, slfit)),
-        ('sigma_by_year', small, lambda fig: plot_sigma_by_velyear(fig, slfit)),
-        ('termpos_residuals', small, lambda fig: plot_termpos_residuals(fig, slfit)),
+        ('uplen_termpos', small, lambda fig: plot_uplen_termpos(fig, slfit, pub=pub)),
+        ('year_termpos', small, lambda fig: plot_year_termpos(fig, slfit, pub=pub)),
+        ('melt_termpos', small, lambda fig: plot_melt_termpos(fig, slfit, pub=pub)),
+        ('sigma_by_year', small, lambda fig: plot_sigma_by_velyear(fig, slfit, pub=pub)),
+        ('termpos_residuals', small, lambda fig: plot_termpos_residuals(fig, slfit, pub=pub)),
         ('map', (8.,4.), lambda fig: stability.plot_reference_map(fig, selrow))]:
 
-        fig = matplotlib.pyplot.figure(figsize=size)
-        do_plot(fig)
-        fig.savefig(os.path.join(odir, fname+'.png'))
-        fig.savefig(os.path.join(odir, fname+'_300.png'), dpi=300)   # Hi-res version
-        fig.clf()
+        if draft:
+            fig = matplotlib.pyplot.figure(figsize=size)
+            do_plot(fig)
+            fig.savefig(os.path.join(odir, fname+'.png'))
 
-    cmd = ['pdflatex', 'page.tex']
-    env = dict(os.environ.items())
-    env['TEXINPUTS'] = '.:..:../..:'
-    subprocess.run(cmd, cwd=odir, env=env, check=True)
+        if (selrow.w21t_Glacier, fname) in publish_combos:
+            fig = matplotlib.pyplot.figure(figsize=size)
+            do_plot(fig)
+            with ioutil.TmpDir(dir=odir_pub) as tdir:
+                fname0 = tdir.filename() + '.png'
+                fig.savefig(fname0, dpi=300)   # Hi-res version
+
+                with ioutil.WriteIfDifferent(os.path.join(odir_pub, fname+'_300.png')) as wid:
+                    cmd = ['convert', fname0, '-trim', '-strip', wid.tmpfile]
+                    subprocess.run(cmd, check=True)
+#                    shutil.copy(fname0, wid.tmpfile)
+
+
+            fig.clf()
+
+    if draft:
+        cmd = ['pdflatex', 'page.tex']
+        env = dict(os.environ.items())
+        env['TEXINPUTS'] = '.:..:../..:'
+        subprocess.run(cmd, cwd=odir, env=env, check=True)
 
     # Return the data we computed along the way
     ret = slfit._asdict()
@@ -178,6 +222,11 @@ def plot_page(odir, selrow, velterm_df):
     return ret
 
 def main():
+
+    # Bigger fonts
+    # https://stackabuse.com/change-font-size-in-matplotlib/
+    # (refer back if this doesn't fix tick label sizes)
+    matplotlib.pyplot.rcParams['font.size'] = '16'
 
     select = d_stability.read_select(map_wkt)
     velterm_df = d_velterm.read()
@@ -201,6 +250,7 @@ def main():
             selrow.w21t_glacier_number,
             selrow.w21t_Glacier.replace('_','-').replace('.',''))
         odir_gl = os.path.join(odir, leaf)
+        odir_pub = os.path.join(PUB_ROOT, leaf)
 
         # Quicker debugging
 #        if os.path.exists(ofname):
@@ -209,9 +259,12 @@ def main():
 #        with ioutil.TmpDir() as tdir:
         if True:
             try:
-                row = plot_page(odir_gl, selrow, velterm_df)
+                row = plot_page(odir_gl, odir_pub, selrow, velterm_df, draft=False, pub=True)
                 #os.rename(os.path.join(tdir.location, 'page.pdf'), ofname)
                 row['plot_page'] = leaf
+                row['ns481_grid'] = selrow.ns481_grid
+                row['w21t_glacier_number'] = selrow.w21t_glacier_number
+                row['w21t_Glacier'] = selrow.w21t_Glacier
                 rows.append(row)
                 #break        # DEBUG: Just one plot
             except Exception as e:
