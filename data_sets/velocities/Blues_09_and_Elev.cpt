@@ -1,0 +1,27 @@
+# GMT palette Blues_09.cpt
+# 
+# This product includes color specifications and designs
+# developed by Cynthia Brewer (http://colorbrewer.org/).
+# 
+# Converted to the cpt format by J.J.Green
+# Sequential palette with 9 colours
+# 
+# COLOR_MODEL = RGB
+-1000 008 048 107    -800 008 048 107
+ -800 008 081 156    -600 008 081 156
+ -600 033 113 181    -500 033 113 181
+ -500 066 146 198    -400 066 146 198
+ -400 107 174 214    -300 107 174 214
+ -300 158 202 225    -200 158 202 225
+ -200 198 219 239    -100 198 219 239
+ -100 222 235 247       0 222 235 247
+# 0.00 247 251 255   1.00 247 251 255
+# above sea level colors taken from:
+# http://soliton.vm.bytemark.co.uk/pub/cpt-city/wkp/country/wiki-france.cpt
+0     172 208 165 100   172 208 165 
+100   148 191 139 250   148 191 139
+250   189 204 150 500   189 204 150
+500   225 228 181 750   225 228 181 
+750   239 235 192 1000  239 235 192
+1000  222 214 163 1500  222 214 163
+#1500  202 185 130 2000  202 185 130
