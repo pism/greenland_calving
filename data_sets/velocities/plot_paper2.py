@@ -99,14 +99,14 @@ def plot_velocity_map(selrow, plot_year):
     cmap,_,_ = cptutil.read_cpt('Blues_09_and_Elev.cpt')
     #cmap,_,_ = cptutil.read_cpt('caribbean.cpt')
     pcm_elev = ax.pcolormesh(
-        xx, yy, bed, transform=mapinfo.crs, cmap=cmap, vmin=-1000, vmax=1500)
+        xx, yy, bed*.001, transform=mapinfo.crs, cmap=cmap, vmin=-1.000, vmax=1.500)
 
     velocity_file = uafgi.data.join_outputs('itslive', 'GRE_G0240_{}_1985_2018.nc'.format(selrow.ns481_grid))
     print(velocity_file)
     with netCDF4.Dataset(velocity_file) as nc:
         uu = nc.variables['u_ssa_bc'][plot_year-1985,:]
         vv = nc.variables['v_ssa_bc'][plot_year-1985,:]
-        vel = np.sqrt(uu*uu + vv*vv)
+        vel = np.sqrt(uu*uu + vv*vv) * .001    # Convert to km/a
 
     # ---------- Plot velocities in fjord
     fjord_gd = bedmachine.get_fjord_gd(bedmachine_file, selrow.fj_poly)
@@ -114,11 +114,11 @@ def plot_velocity_map(selrow, plot_year):
     velm = np.ma.masked_where(np.logical_or(np.logical_not(fjord), vel==0), vel)
 #    velm = np.ma.masked_where(np.abs(vel==0), vel)
 
-    cmap,_,_ = cptutil.read_cpt('001-fire.cpt')
+    cmap,_,_ = cptutil.read_cpt('001-fire-10.cpt')
 
     pcm_vel = ax.pcolormesh(
         xx, yy, velm, transform=mapinfo.crs,
-        cmap=cmap, vmin=0, vmax=5000)
+        cmap=cmap, vmin=0, vmax=5.000)
 #    cbar = fig.colorbar(pcm_vel, ax=ax)
 #    cbar.set_label('Velocities (m/a)')
         
@@ -177,7 +177,14 @@ def plot_velocity_map(selrow, plot_year):
             figsize=small)
         cbar_ax = axs
         cbar = fig.colorbar(pcm, ax=cbar_ax)
+#        cbar = matplotlibl.colorbar.ColorbarBase(
+
+#        cbar.ax.xaxis.set_ticks_position("top")
+        cbar.ax.yaxis.set_ticks_position('left')
+
         cbar_ax.remove()   # https://stackoverflow.com/questions/40813148/save-colorbar-for-scatter-plot-separately
+#        cbar_ax.yaxis.set_label_position('left')
+
         write_plot(fig, os.path.join(PUB_ROOT, 'insar_{}_{}.png'.format(selrow.ns481_grid, suffix)))
 
 
@@ -213,7 +220,7 @@ def main():
 
 
 
-    odir='.'
-    fig.savefig(os.path.join(odir, 'x.png'))
+#    odir='.'
+#    fig.savefig(os.path.join(odir, 'x.png'))
 
 main()
