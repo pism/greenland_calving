@@ -146,7 +146,7 @@ def plot_velocity_map(selrow, plot_year):
             fjc = np.flip(fjc_gd, axis=0)
 
 #            ax.add_geometries([termx], crs=mapinfo.crs, edgecolor='xkcd:red', facecolor='none', alpha=.3)
-            ax.add_geometries([term], crs=mapinfo.crs, edgecolor='xkcd:black', facecolor='none', alpha=.8,linewidth=.5)
+            ax.add_geometries([term], crs=mapinfo.crs, edgecolor='xkcd:black', facecolor='none', alpha=.8,linewidth=.7)
 
     bounds = date_termini[0][1].bounds
     for _,term in date_termini:
@@ -164,7 +164,8 @@ def plot_velocity_map(selrow, plot_year):
     ax.pcolormesh(
         xx, yy, up_fjord, transform=mapinfo.crs, cmap=cmap, vmin=0, vmax=1)#        vmin=0, vmax=5.000)
 
-    cmap = matplotlib.colors.LinearSegmentedColormap.from_list('single', [(0,0,0), (1.0,1.0,0.0)])
+#    cmap = matplotlib.colors.LinearSegmentedColormap.from_list('single', [(0,0,0), (1.0,1.0,0.0)])
+    cmap = matplotlib.colors.LinearSegmentedColormap.from_list('single', [(0,0,0), (1.0,0.0,0.0)])
     up_fjord = np.isin(fjc, glacier.TERMINUS)
     up_fjord = np.ma.masked_where(np.logical_not(up_fjord), up_fjord)
     ax.pcolormesh(
@@ -179,7 +180,7 @@ def plot_velocity_map(selrow, plot_year):
 
     # Plot up_loc
     print(selrow.up_loc)
-    ax.plot(selrow.up_loc.x, selrow.up_loc.y, marker='*', color='yellow')
+    ax.plot(selrow.up_loc.x, selrow.up_loc.y, marker='*', color='red')
 #    ax.add_geometries([selrow.up_loc], crs=mapinfo.crs, marker='*')
 
 #    return
