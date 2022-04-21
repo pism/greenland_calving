@@ -66,6 +66,13 @@ def main():
     plt.rcParams['font.size'] = 12
     plt.rcParams['figure.figsize'] = [8, 6]
 
+
+    # Boxplot properties
+    # https://stackoverflow.com/questions/35160956/pandas-boxplot-set-color-and-properties-for-box-median-mean
+    #boxprops = dict(linestyle='-', linewidth=4, color='k')
+    #medianprops = dict(linestyle='-', linewidth=4, color='k')
+    medianprops = dict(linestyle='-', linewidth=2, color='red')
+
     # Boxplot sorted by median
     # https://stackoverflow.com/questions/21912634/how-can-i-sort-a-boxplot-in-pandas-by-the-median-values
     sg = sigmas[sigmas.sigma_max.abs() < 1.e3]
@@ -73,7 +80,7 @@ def main():
     sg2 = pd.DataFrame({col:vals['sigma_max'] for col,vals in sgg})
     meds = sg2.median().sort_values()
     sg2 = sg2[meds.index]
-    ax = sg2.boxplot(grid=False, showfliers=False)
+    ax = sg2.boxplot(grid=False, showfliers=False, medianprops=medianprops)
 
     ## https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.boxplot.html#matplotlib.pyplot.boxplot
     #ax = sg.boxplot(column='sigma_max', by='glacier_id', grid=False, showfliers=False)
@@ -102,7 +109,7 @@ def main():
     #sg = sg.rename(columns={'time':'year'})
     sg['year'] = sg.time.astype('i')
     # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.boxplot.html#matplotlib.pyplot.boxplot
-    sg.boxplot(column='sigma_max', by='year', grid=False, showfliers=False)
+    sg.boxplot(column='sigma_max', by='year', grid=False, showfliers=False, medianprops=medianprops)
     plt.xticks(rotation=90)
 
     plt.suptitle('')    # Remove title added by boxplot()
