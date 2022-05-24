@@ -1,3 +1,4 @@
+import sys
 import uafgi.data.wkt
 from uafgi import stability,ioutil,cptutil
 import uafgi.data.stability as d_stability
@@ -74,6 +75,27 @@ def plot_uplen_termpos(fig, slfit, pub=False):
 
 sigma_by_velyear_cmap,_,_ = cptutil.read_cpt('pride_flag_1978x.cpt')
 
+def plot_year_cbar(fig):
+    """cax:
+        Axes to use
+    """
+    cmap = sigma_by_velyear_cmap
+    norm = matplotlib.colors.Normalize(vmin=1980, vmax=2020, clip=True)
+    ax = fig.add_axes((.1,.6,.8,.35))
+
+    # Plot colorbar
+    cb1 = matplotlib.colorbar.ColorbarBase(
+        ax, cmap=cmap, norm=norm,
+        orientation='horizontal')
+#    ax.remove()   # https://stackoverflow.com/questions/40813148/save-colorbar-for-scatter-plot-separately
+#    if not pub:
+#        cb1.set_label('Surface Velocity Year')
+#    cb1.locator = matplotlib.ticker.FixedLocator([1980,1984,1988,1992,1996,2000,])
+    cb1.locator = matplotlib.ticker.FixedLocator([1980,1990,2000,2010,2020])
+    cb1.update_ticks()
+
+    return cb1
+
 def plot_sigma_by_velyear(fig, slfit, pub=False):
 
     # Set up mapping between vel_year and color
@@ -125,7 +147,8 @@ def plot_termpos_residuals(fig, slfit, pub=False):
 
     df = slfit.resid_df
     lr = slfit.resid_lr
-    ax.scatter(df.fluxratio*1e-3, df.termpos_residual)
+    ax.scatter(df.fluxratio*1e-3, df.termpos_residual, c=df.term_year, cmap=sigma_by_velyear_cmap)
+#    ax.scatter(df.fluxratio*1e-3, df.termpos_residual, c='green', cmap=sigma_by_velyear_cmap)
     ax.plot(df.fluxratio*1e-3, df.fluxratio * lr.slope + lr.intercept)
     if not pub:
         ax.set_xlabel('von Mises \u03C3 Across Terminus (kPa)', fontsize=14)    # Sigma
@@ -140,7 +163,11 @@ def triplet(gname):
     return [(gname,vname) for vname in _triplet_vars]
 
 publish_combos = {
-    ('Hayes N', 'sigma_by_year')
+    ('Hayes N', 'sigma_by_year'),
+    ('Lille', 'mapcbar'),
+    ('Lille', 'yearcbar'),
+#    ('Lille', 'map'),
+#    ('Lille', 'termpos_residuals'),
 }
 
 for gname in ('Puisortoq N', 'Puisortoq S', 'Eqip Sermia', 'Gyldenlove N', 'Kujalleq', 'Lille', 'AP Bernstorff', 'Inngia', 'Cornell N', 'Hayes NN'):
@@ -183,7 +210,9 @@ def plot_page(odir, odir_pub, selrow, velterm_df, draft=True, pub=False):
         ('melt_termpos', small, lambda fig: plot_melt_termpos(fig, slfit, pub=pub)),
         ('sigma_by_year', small, lambda fig: plot_sigma_by_velyear(fig, slfit, pub=pub)),
         ('termpos_residuals', small, lambda fig: plot_termpos_residuals(fig, slfit, pub=pub)),
-        ('map', (8.,4.), lambda fig: stability.plot_reference_map(fig, selrow))]:
+        ('map', (8.,4.), lambda fig: stability.plot_reference_map(fig, selrow)),
+        ('mapcbar', (5.,0.6), lambda fig: stability.plot_reference_cbar(fig)),
+        ('yearcbar', (5.,0.6), lambda fig: plot_year_cbar(fig))]:
 
         if draft:
             fig = matplotlib.pyplot.figure(figsize=size)
@@ -191,17 +220,18 @@ def plot_page(odir, odir_pub, selrow, velterm_df, draft=True, pub=False):
             fig.savefig(os.path.join(odir, fname+'.png'))
 
         if (selrow.w21t_Glacier, fname) in publish_combos:
+            ofname = os.path.join(odir_pub, fname+'_300.png')
+            print('fname = ', ofname)
             fig = matplotlib.pyplot.figure(figsize=size)
             do_plot(fig)
             with ioutil.TmpDir(dir=odir_pub) as tdir:
                 fname0 = tdir.filename() + '.png'
                 fig.savefig(fname0, dpi=300)   # Hi-res version
 
-                with ioutil.WriteIfDifferent(os.path.join(odir_pub, fname+'_300.png')) as wid:
+                with ioutil.WriteIfDifferent(ofname) as wid:
                     cmd = ['convert', fname0, '-trim', '-strip', wid.tmpfile]
                     subprocess.run(cmd, check=True)
 #                    shutil.copy(fname0, wid.tmpfile)
-
 
             fig.clf()
 
@@ -269,7 +299,9 @@ def main():
                 #break        # DEBUG: Just one plot
             except Exception as e:
                 shutil.rmtree(odir_gl, ignore_errors=True)
+                sys.stdout.flush()
                 traceback.print_exc()
+                sys.stderr.flush()
 
     df = pd.DataFrame(rows)
     df.to_pickle('16_slfit.df')
