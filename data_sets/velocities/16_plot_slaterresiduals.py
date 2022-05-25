@@ -1,6 +1,7 @@
+import netCDF4
 import sys
 import uafgi.data.wkt
-from uafgi import stability,ioutil,cptutil
+from uafgi import stability,ioutil,cptutil,cartopyutil,bedmachine,dtutil
 import uafgi.data.stability as d_stability
 from uafgi.data import d_velterm
 import mpl_toolkits.axes_grid1
@@ -28,6 +29,130 @@ def _rect(*delta):
     mm = [m+d for m,d in zip(margin,delta)]
     return (mm[0], mm[1], mm[2]-mm[0], mm[3]-mm[1])
 
+
+
+# ------------------------------------------------------------
+ELEV_RANGE = (-1000, 0)
+
+
+#def plot_reference_cbar(fig):
+##    # Get local geometry
+##    bedmachine_file = uafgi.data.join_outputs('bedmachine', 'BedMachineGreenland-2017-09-20_{}.nc'.format(#selrow.ns481_grid))
+##    with netCDF4.Dataset(bedmachine_file) as nc:
+##        nc.set_auto_mask(False)
+##        mapinfo = cartopyutil.nc_mapinfo(nc, 'polar_stereographic')
+#
+#    cmap,_,_ = cptutil.read_cpt('Blues_09a.cpt')
+#    pltutil.plot_cbar(
+#        fig, cmap,
+#        ELEV_RANGE[0], ELEV_RANGE[1], 'horizontal')
+
+
+def plot_reference_cbar(fig):
+    """cax:
+        Axes to use
+    """
+    cmap,_,_ = cptutil.read_cpt('Blues_09a.cpt')
+    norm = matplotlib.colors.Normalize(vmin=ELEV_RANGE[0], vmax=ELEV_RANGE[1], clip=True)
+    ax = fig.add_axes((.1,.6,.8,.35))
+
+    # Plot colorbar
+    cb1 = matplotlib.colorbar.ColorbarBase(
+        ax, cmap=cmap, norm=norm,
+        orientation='horizontal')
+    cb1.locator = matplotlib.ticker.FixedLocator([-1000, -800, -600, -400, -200, 0])
+    cb1.update_ticks()
+
+    return cb1
+
+
+def plot_reference_map(fig, selrow):
+    """Plots a reference map of a single glacier
+
+    fig:
+        Pre-created figure (of a certain size/shape) to populate.
+    selrow:
+        Row of d_stability.read()"""
+
+    # fig = matplotlib.pyplot.figure()
+
+    # -----------------------------------------------------------
+    # (1,0): Map
+    # Get local geometry
+    bedmachine_file = uafgi.data.join_outputs('bedmachine', 'BedMachineGreenland-2017-09-20_{}.nc'.format(selrow.ns481_grid))
+    with netCDF4.Dataset(bedmachine_file) as nc:
+        nc.set_auto_mask(False)
+        mapinfo = cartopyutil.nc_mapinfo(nc, 'polar_stereographic')
+        bed = nc.variables['bed'][:]
+        xx = nc.variables['x'][:]
+        yy = nc.variables['y'][:]
+
+    # Set up the basemap
+    ax = fig.add_axes((.1,.1,.9,.86), projection=mapinfo.crs)
+    #ax.set_facecolor('xkcd:light grey')    # https://xkcd.com/color/rgb/
+    ax.set_facecolor('#E0E0E0')    # Map background https://xkcd.com/color/rgb/
+
+    #ax = fig.add_subplot(spec[2,:], projection=mapinfo.crs)
+    ax.set_extent(mapinfo.extents, crs=mapinfo.crs)
+#    ax.coastlines(resolution='50m')
+
+
+    # Plot depth in the fjord
+    fjord_gd = bedmachine.get_fjord_gd(bedmachine_file, selrow.fj_poly)
+    fjord = np.flip(fjord_gd, axis=0)
+    bedm = np.ma.masked_where(np.logical_not(fjord), bed)
+
+    bui_range = (0.,350.)
+    cmap,_,_ = cptutil.read_cpt('Blues_09a.cpt')
+
+    pcm = ax.pcolormesh(
+        xx, yy, bedm, transform=mapinfo.crs,
+        cmap=cmap, vmin=ELEV_RANGE[0], vmax=ELEV_RANGE[1])
+#    cbar = fig.colorbar(pcm, ax=ax)
+#    cbar.set_label('Fjord Bathymetry (m)')
+##    plot_reference_cbar(pcm, 'refmap_cbar.png')
+
+    # Plot the termini
+    date_termini = sorted(selrow.w21t_date_termini)
+
+    yy = [dtutil.year_fraction(dt) for dt,_ in date_termini]
+    year_termini = [(y,t) for y,(_,t) in zip(yy, date_termini) if y > 2000]
+
+    norm = matplotlib.colors.Normalize(vmin=1980, vmax=2020, clip=True)
+    mapper = matplotlib.cm.ScalarMappable(norm=norm, cmap=sigma_by_velyear_cmap)
+    edgecolor = 'red'    # Default
+    for year,term in year_termini:
+        edgecolor = mapper.to_rgba(year)
+        ax.add_geometries([term], crs=mapinfo.crs, edgecolor=edgecolor, facecolor='none', alpha=.8)
+
+    bounds = date_termini[0][1].bounds
+    for _,term in date_termini:
+        bounds = (
+            min(bounds[0],term.bounds[0]),
+            min(bounds[1],term.bounds[1]),
+            max(bounds[2],term.bounds[2]),
+            max(bounds[3],term.bounds[3]))
+    x0,y0,x1,y1 = bounds
+    ax.set_extent(extents=(x0-5000,x1+5000,y0-5000,y1+5000), crs=mapinfo.crs)
+
+    # Plot scale in km
+    cartopyutil.add_osgb_scalebar(ax)#, at_y=(0.10, 0.080))
+
+    # Add an arrow showing ice flow
+    dir = selrow.ns481_grid[0]
+    if dir == 'E':
+        coords = (.5,.05,.45,0)
+    else:    # 'W'
+        coords = (.95,.05,-.45,0)
+    arrow = ax.arrow(
+        *coords, transform=ax.transAxes,
+        head_width=.03, ec='black', length_includes_head=True,
+        shape='full', overhang=1,
+        label='Direction of Ice Flow')
+    ax.annotate('Ice Flow', xy=(.725, .07), xycoords='axes fraction', size=10, ha='center')
+
+
+# ------------------------------------------------------------
 def plot_year_termpos(fig, slfit, pub=False):
     """Plots year vs melt and year vs terminus position
     pub: bool
@@ -45,6 +170,8 @@ def plot_year_termpos(fig, slfit, pub=False):
     ax.plot(slfit.bbins, slfit.termpos_b, marker='.')
     lr = slfit.termpos_lr
     ax.plot(slfit.bbins1, lr.slope*slfit.up_len_km_b1 + lr.intercept, marker='.')
+    ax.set_xlim((1980,2020))
+    ax.set_xticks([1980,1990,2000,2010,2020])
 
     # ------- Right axis: melt by year
     # 5-year melt plot
@@ -154,6 +281,8 @@ def plot_termpos_residuals(fig, slfit, pub=False):
         ax.set_xlabel('von Mises \u03C3 Across Terminus (kPa)', fontsize=14)    # Sigma
         ax.set_ylabel('Slater Terminus Residual (km)', fontsize=14)
 
+    ax.set_ylim((-4.,2.))
+#    ax.set_yticks([1980,1990,2000,2010,2020])
 
 # ---------------------------------------------------------
 # Combos we want to publish
@@ -210,7 +339,7 @@ def plot_page(odir, odir_pub, selrow, velterm_df, draft=True, pub=False):
         ('melt_termpos', small, lambda fig: plot_melt_termpos(fig, slfit, pub=pub)),
         ('sigma_by_year', small, lambda fig: plot_sigma_by_velyear(fig, slfit, pub=pub)),
         ('termpos_residuals', small, lambda fig: plot_termpos_residuals(fig, slfit, pub=pub)),
-        ('map', (8.,4.), lambda fig: stability.plot_reference_map(fig, selrow)),
+        ('map', (8.,4.), lambda fig: plot_reference_map(fig, selrow)),
         ('mapcbar', (5.,0.6), lambda fig: stability.plot_reference_cbar(fig)),
         ('yearcbar', (5.,0.6), lambda fig: plot_year_cbar(fig))]:
 
