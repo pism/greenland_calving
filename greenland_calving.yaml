@@ -1,0 +1,30 @@
+channels:
+- conda-forge
+- defaults
+dependencies:
+- cartopy=0.20.1
+- cdo=1.9.10
+- dill=0.3.5.1
+- imagemagick=7.1.0_10
+- jupyter=1.0.0
+- matplotlib=3.5.2
+- nco=5.0.7
+- ncview=2.1.8
+- netcdf4=1.5.8
+- openpyxl=3.0.9
+- pandas=1.4.2
+- pytest=7.1.2
+- rclone=1.58.1
+- scikit-image=0.19.2
+- scikit-learn=1.1.1
+- seaborn=0.11.2
+- shapely=1.8.0
+- sphinx=4.5.0
+- statsmodels=0.13.2
+- xarray=2022.3.0
+- pip:
+  - gdal==3.3.3
+  - pygdal==3.3.3.10
+  - pyqt5-sip==4.19.18
+  - pyqtchart==5.12
+  - pyqtwebengine==5.12.1
