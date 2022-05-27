@@ -8,6 +8,8 @@ This work also depends on Python code in the UAFGI library: https://github.com/p
 
 ## Python Environment
 
+Required: curl, make, Python
+
 1. Install Miniconda
 
 2. Install `greenland_calving.yaml` environment.
