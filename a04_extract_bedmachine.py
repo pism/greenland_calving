@@ -1,3 +1,4 @@
+import os,subprocess
 import numpy as np
 import pandas as pd
 from uafgi import gdalutil,bedmachine,glacier,make,pdutil
@@ -5,7 +6,6 @@ import uafgi.wkt
 import uafgi.data
 import uafgi.data.ns642
 import uafgi.data.itslive
-from uafgi.pism import flow_simulation
 import datetime
 
 """Set up bedmachine files --- both global and local --- as required
@@ -81,6 +81,7 @@ def gimpdem_local_rule(ns481_grid):
         [ofname])
 
 # -------------------------------------------------------------
+MAKEDIR = './a04_extract_bedmachine.mk'
 def render_bedmachine_makefile(select):
     """Given a Glacier selection, creates a Makefile to create all the
     localized BedMachine files required for it."""
@@ -97,13 +98,7 @@ def render_bedmachine_makefile(select):
         makefile.add(rule)
         targets.append(rule.outputs[0])
 
-    # Make the localized GimpDEM extracts
-    for grid in select['ns481_grid']:
-        rule = gimpdem_local_rule(grid)
-        makefile.add(rule)
-        targets.append(rule.outputs[0])
-
-    # Convert the ItsLive files
+    # Localize the ItsLive files
     for grid in select['ns481_grid']:
         # Localize the ItsLive file
         rule = uafgi.data.itslive.merge_to_pism_rule(grid,
@@ -113,13 +108,7 @@ def render_bedmachine_makefile(select):
         makefile.add(rule)
         targets.append(rule.outputs[0])
 
-        # Compute von Mises stress for it
-        rule = flow_simulation.compute_sigma_rule(
-            rule.outputs[0], uafgi.data.join_outputs('itslive'))
-        makefile.add(rule)
-        targets.append(rule.outputs[0])
-
-    # Convert the Wood 2021 velocity files
+    # Localize the Wood 2021 velocity files
     for grid in select['ns481_grid']:
         # Localize the Wood 2021 velocity file
         rule = uafgi.data.itslive.merge_to_pism_rule(grid,
@@ -129,20 +118,24 @@ def render_bedmachine_makefile(select):
         makefile.add(rule)
         targets.append(rule.outputs[0])
 
-        # Compute von Mises stress for it
-        rule = flow_simulation.compute_sigma_rule(
-            rule.outputs[0], uafgi.data.join_outputs('wood2021', 'velocities'))
-        makefile.add(rule)
-        targets.append(rule.outputs[0])
+
+#    # Make the localized GimpDEM extracts
+#    for grid in select['ns481_grid']:
+#        rule = gimpdem_local_rule(grid)
+#        makefile.add(rule)
+#        targets.append(rule.outputs[0])
 
 
 
-    makefile.generate(targets, '02_extract_bedmachine.mk')
+    makefile.generate(targets, MAKEDIR, python_exe='python')
 
 def main():
     #select = pd.read_pickle(uafgi.data.join_outputs('stability', '01_select.df'))
     select = pdutil.ExtDf.read_pickle(uafgi.data.join_outputs('stability', '01_select.dfx'))
     render_bedmachine_makefile(select.df)
-    print('Finished rendering Makefile.\n    Run with ./02_extract_bedmachine.mk/make')
+    print(f'Finished rendering Makefile.\n    Run with {MAKEDIR}/make')
+
+    cmd = [os.path.join(MAKEDIR, 'make')]
+    subprocess.run(cmd, check=True)
 
 main()
