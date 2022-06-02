@@ -1,9 +1,7 @@
 import subprocess
 import datetime
-#from cffdrs import arcticfire
+from cffdrs import arcticfire
 from uafgi import cptutil
-
-# Derived from plot_agu1.py
 
 # https://stackoverflow.com/questions/43599018/is-there-a-way-to-get-matplotlib-path-contains-points-to-be-inclusive-of-boundar
 #I do quite like this command in Jupiter notebook:
@@ -19,7 +17,7 @@ import itertools
 import pyproj
 import shapely
 import copy
-from uafgi import gicollections,cfutil,glacier,gdalutil,shputil,pdutil,cartopyutil,ioutil
+from uafgi import gicollections,cfutil,glacier,gdalutil,shputil,pdutil,cartopyutil
 import uafgi.data.ns642
 import netCDF4
 import matplotlib.pyplot as plt
@@ -31,16 +29,6 @@ itslive_file = 'outputs/itslive/GRE_G0240_W70.90N_1985_2018.nc'
 sigma_file = 'outputs/itslive/GRE_G0240_W70.90N_1985_2018_sigma.nc'
 bm_file = 'outputs/bedmachine/BedMachineGreenland-2017-09-20_W70.90N.nc'
 termini_file = 'data/wood2021/Greenland_Glacier_Ice_Front_Positions.shp'
-PUB_ROOT = '/Users/eafischer2/overleaf/CalvingPaper/plots'
-
-def write_plot(fig, ofname):
-    # Write plot and shrink
-    with ioutil.TmpDir() as tdir:
-        fname0 = tdir.filename() + '.png'
-        fig.savefig(fname0, dpi=300, transparent=True)
-        with ioutil.WriteIfDifferent(ofname) as wid:
-            cmd = ['convert', fname0, '-trim', '-strip', wid.tmpfile]
-            subprocess.run(cmd, check=True)
 
 def main():
 
@@ -83,8 +71,7 @@ def main():
 
 
 
-    # ===================================================================
-    # vector_map.png
+    # -----------------------------------------------------
     fig,axs = plt.subplots(
         nrows=1,ncols=1,
         subplot_kw={'projection': map_crs},
@@ -93,13 +80,12 @@ def main():
     # Get sub-plot to plot on
     #ax = axs[0][0]
     ax = axs
-    #ax.set_title('Integration of velocity (v) or stress state (vσ) across terminus')
+    ax.set_title('Integration of velocity (v) or stress state (vσ) across terminus')
     ax.set_extent(extents, map_crs)
 
-    cmap,_,_ = cptutil.read_cpt('Blues_09_and_Elev.cpt')
-    #cmap,_,_ = cptutil.read_cpt('caribbean.cpt')
-    pcm = ax.pcolormesh(
-        xx, yy, bed, transform=map_crs, cmap=cmap, vmin=-1000, vmax=1500)
+    cmap,_,_ = cptutil.read_cpt('palettes/caribbean.cpt')
+    ax.pcolormesh(
+        xx, yy, bed, transform=map_crs, cmap=cmap)
 
     ax.quiver(xx, yy, uu, vv, transform=map_crs, regrid_shape=30, scale=30000)
 
@@ -109,62 +95,32 @@ def main():
     # here, coordinates in `pgon` are LambertConformal, 
     # it must be specified here as `crs=ccrs.LambertConformal()`
     ax.add_geometries(termini, crs=map_crs, facecolor="none", edgecolor='red', alpha=0.8)
-    cartopyutil.add_osgb_scalebar(ax, text_color='black')
 
-    write_plot(fig, os.path.join(PUB_ROOT, 'vector_map.png'))
-
-
-    # ---------- The colorbar
-    fig,axs = plt.subplots(
-        nrows=1,ncols=1,
-#        subplot_kw={'projection': map_crs},
-        figsize=(8.5,5.5))
-    cbar_ax = axs
-    cbar = fig.colorbar(pcm, ax=cbar_ax)
-    cbar_ax.remove()   # https://stackoverflow.com/questions/40813148/save-colorbar-for-scatter-plot-separately
-    write_plot(fig, os.path.join(PUB_ROOT, 'vector_map_cbar.png'))
-
-
-    # ===================================================================
-    # sigma_map.png
+    fig.savefig('agu1b.png', dpi=300, transparent=True)
 
     # -----------------------------------------------------
-    # Sample \tilde{\sigma} plot from PISM
-
     fig,axs = plt.subplots(
         nrows=1,ncols=1,
         subplot_kw={'projection': map_crs},
         figsize=(8.5,5.5))
 
     ax = axs
-    #ax.set_title('Stress state σ of glacier (MPa)')
+    ax.set_title('Stress state σ of glacier (MPa)')
     ax.set_extent(extents, map_crs)
 
-    pcm = ax.pcolormesh(xx, yy, 1.e-3 * sigma, transform=map_crs, vmin=0.0, vmax=500)
+    pcm = ax.pcolormesh(xx, yy, 1.e-6 * sigma, transform=map_crs, vmin=0.0, vmax=0.5)
     divider = make_axes_locatable(ax)
     # https://stackoverflow.com/questions/30030328/correct-placement-of-colorbar-relative-to-geo-axes-cartopy
 #    cax = divider.append_axes("bottom", size='3%', pad=0.05, axes_class=plt.Axes)
 
-#    cbar = fig.colorbar(pcm, ax=ax, shrink=0.98)
+    cbar = fig.colorbar(pcm, ax=ax, shrink=0.98)
 #    cbar.set_label('Stress State σ (MPa)')
 
     ax.add_geometries(termini, crs=map_crs, facecolor="none", edgecolor='red', alpha=0.8)
-    cartopyutil.add_osgb_scalebar(ax, text_color='white')
+
 
     #plt.show()
-    write_plot(fig, os.path.join(PUB_ROOT, 'sigma_map.png'))
-
-    # ---------- The colorbar
-    fig,axs = plt.subplots(
-        nrows=1,ncols=1,
-#        subplot_kw={'projection': map_crs},
-        figsize=(8.5,5.5))
-    cbar_ax = axs
-    cbar = fig.colorbar(pcm, ax=cbar_ax)
-    cbar_ax.remove()   # https://stackoverflow.com/questions/40813148/save-colorbar-for-scatter-plot-separately
-    write_plot(fig, os.path.join(PUB_ROOT, 'sigma_map_cbar.png'))
-
-
+    fig.savefig('agu1a.png', dpi=300, transparent=True)
 
 
 main()

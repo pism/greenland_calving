@@ -97,8 +97,8 @@ def plot_velocity_map(selrow, plot_year):
 
 
     # ------- Plot bed elevations EVERYWHERE
-    cmap,_,_ = cptutil.read_cpt('Blues_09_and_Elev.cpt')
-    #cmap,_,_ = cptutil.read_cpt('caribbean.cpt')
+    cmap,_,_ = cptutil.read_cpt('palettes/Blues_09_and_Elev.cpt')
+    #cmap,_,_ = cptutil.read_cpt('palettes/caribbean.cpt')
     pcm_elev = ax.pcolormesh(
         xx, yy, bed*.001, transform=mapinfo.crs, cmap=cmap, vmin=-1.000, vmax=1.500)
 
@@ -121,7 +121,7 @@ def plot_velocity_map(selrow, plot_year):
     velm = np.ma.masked_where(np.logical_or(np.logical_not(fjord), vel==0), vel)
 #    velm = np.ma.masked_where(np.abs(vel==0), vel)
 
-    cmap,_,_ = cptutil.read_cpt('001-fire-10.cpt')
+    cmap,_,_ = cptutil.read_cpt('palettes/001-fire-10.cpt')
 
 #    pcm_vel = ax.pcolormesh(
 #        xx, yy, velm, transform=mapinfo.crs,

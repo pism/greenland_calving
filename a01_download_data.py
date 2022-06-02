@@ -75,13 +75,20 @@ leaves = ['aba7282_Table_S1.xlsx', 'doi_10.7280_D1667W__v6-3.zip']
 makefile.add(Rule(
     [], [os.path.join(odir,leaf) for leaf in leaves],
     [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/wood2021/ {odir}',
-    f'python unzip_wood2021.py']))
+    f'python download_scripts/unzip_wood2021.py']))
 
 # Extract / preprocess Wood et al 2021 data
 makefile.add(Rule(
     [os.path.join(odir, 'doi_10.7280_D1667W__v6-3.zip')],
     [os.path.join(odir, 'data', 'index.df')],
-    [f'python unzip_wood2021.py']))
+    ['python download_scripts/unzip_wood2021.py']))
+
+leaves = ['CE','CW','N','NE','NW','SE','SW']
+makefile.add(Rule(
+    [os.path.join(odir, 'aba7282_Table_S1.xlsx')],
+    [os.path.join(odir, f'{leaf}.csv') for leaf in leaves],
+    ['python download_scripts/convert_wood2021_to_csv.py']))
+
 
 # -----------------------------------------------------------
 # Slater 2019
@@ -109,7 +116,7 @@ leaves = list(itertools.chain.from_iterable(
     [shapefiles2(f'{root}') for root in roots]))
 makefile.add(Rule(
     [], [os.path.join(odir,leaf) for leaf in leaves],
-    [f'cd {odir};python {GREENLAND_CALVING}/nsidc-download_NSIDC-0642.001_2021-02-27.py']))
+    [f'cd {odir};python {GREENLAND_CALVING}/download_scripts/nsidc-download_NSIDC-0642.001_2021-02-27.py']))
 
 
 
@@ -133,7 +140,7 @@ outputs = [os.path.join(odir, x) for x in (
     'W81.50N_grid.nc')]
 makefile.add(Rule(
     [], outputs,
-    [f'cd {odir}; python {GREENLAND_CALVING}/download_nsidc0481_grids.py']))
+    [f'cd {odir}; python {GREENLAND_CALVING}/download_scripts/download_nsidc0481_grids.py']))
 #    f'rm {odir}/TSX_*.tif']))
 
 

@@ -42,7 +42,7 @@ ELEV_RANGE = (-1000, 0)
 ##        nc.set_auto_mask(False)
 ##        mapinfo = cartopyutil.nc_mapinfo(nc, 'polar_stereographic')
 #
-#    cmap,_,_ = cptutil.read_cpt('Blues_09a.cpt')
+#    cmap,_,_ = cptutil.read_cpt('palettes/Blues_09a.cpt')
 #    pltutil.plot_cbar(
 #        fig, cmap,
 #        ELEV_RANGE[0], ELEV_RANGE[1], 'horizontal')
@@ -52,7 +52,7 @@ def plot_reference_cbar(fig):
     """cax:
         Axes to use
     """
-    cmap,_,_ = cptutil.read_cpt('Blues_09a.cpt')
+    cmap,_,_ = cptutil.read_cpt('palettes/Blues_09a.cpt')
     norm = matplotlib.colors.Normalize(vmin=ELEV_RANGE[0], vmax=ELEV_RANGE[1], clip=True)
     ax = fig.add_axes((.1,.6,.8,.35))
 
@@ -103,7 +103,7 @@ def plot_reference_map(fig, selrow):
     bedm = np.ma.masked_where(np.logical_not(fjord), bed)
 
     bui_range = (0.,350.)
-    cmap,_,_ = cptutil.read_cpt('Blues_09a.cpt')
+    cmap,_,_ = cptutil.read_cpt('palettes/Blues_09a.cpt')
 
     pcm = ax.pcolormesh(
         xx, yy, bedm, transform=mapinfo.crs,
@@ -200,7 +200,7 @@ def plot_uplen_termpos(fig, slfit, pub=False):
         ax.set_xlabel('MEASURES Terminus (km)', fontsize=14)
         ax.set_ylabel('Slater Terminus (km)', fontsize=14)
 
-sigma_by_velyear_cmap,_,_ = cptutil.read_cpt('pride_flag_1978x.cpt')
+sigma_by_velyear_cmap,_,_ = cptutil.read_cpt('palettes/pride_flag_1978x.cpt')
 
 def plot_year_cbar(fig):
     """cax:
