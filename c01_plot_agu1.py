@@ -18,6 +18,7 @@ import pyproj
 import shapely
 import copy
 from uafgi import gicollections,cfutil,glacier,gdalutil,shputil,pdutil,cartopyutil
+import uafgi.data
 import uafgi.data.ns642
 import netCDF4
 import matplotlib.pyplot as plt
@@ -120,7 +121,7 @@ def main():
 
 
     #plt.show()
-    fig.savefig('agu1a.png', dpi=300, transparent=True)
+    fig.savefig(uafgi.data.join_plots('agu1a.png'), dpi=300, transparent=True)
 
 
 main()

@@ -1,16 +1,12 @@
+from uafgi.data import d_velterm
 import uafgi.data
 import os
 import pandas as pd
 
-# Export the velterm pickle files to csv
+# Export the velterm pickle files to a single master CSV file
 
-idir = uafgi.data.join_outputs('velterm')
-odir = os.path.join('outputs0', 'velterm')
+odir = uafgi.data.join_outputs('velterm')
 os.makedirs(odir, exist_ok=True)
 
-for leaf in os.listdir(idir):
-    print(leaf)
-    ifname = os.path.join(idir, leaf)
-    ofname = os.path.join(odir, os.path.splitext(leaf)[0]+'.csv')
-    df = pd.read_pickle(ifname)
-    df.to_csv(ofname)
+df = d_velterm.df_files()
+df.to_csv(os.path.join(odir, 'velterm.csv'))

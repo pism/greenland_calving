@@ -1,5 +1,6 @@
 import netCDF4
 import sys
+import uafgi.data
 import uafgi.data.wkt
 from uafgi import stability,ioutil,cptutil,cartopyutil,bedmachine,dtutil
 import uafgi.data.stability as d_stability
@@ -14,7 +15,7 @@ import numpy as np
 import traceback
 import pandas as pd
 
-PUB_ROOT = '/Users/eafischer2/overleaf/CalvingPaper/plots'
+#PUB_ROOT = '/Users/eafischer2/overleaf/CalvingPaper/plots'
 map_wkt = uafgi.data.wkt.nsidc_ps_north
 
 #margin=(.17,.15,.83,.85)    # left, bottom, width, height
@@ -108,8 +109,9 @@ def plot_reference_map(fig, selrow):
     pcm = ax.pcolormesh(
         xx, yy, bedm, transform=mapinfo.crs,
         cmap=cmap, vmin=ELEV_RANGE[0], vmax=ELEV_RANGE[1])
-#    cbar = fig.colorbar(pcm, ax=ax)
-#    cbar.set_label('Fjord Bathymetry (m)')
+    if not pub:
+        cbar = fig.colorbar(pcm, ax=ax)
+        cbar.set_label('Fjord Bathymetry (m)')
 ##    plot_reference_cbar(pcm, 'refmap_cbar.png')
 
     # Plot the termini
@@ -158,7 +160,7 @@ def plot_year_termpos(fig, slfit, pub=False):
     pub: bool
         Is this for publication?"""
 
-    ax = fig.add_axes(_rect(0,0, -.12,0))
+    ax = fig.add_axes(_rect(0.009,0, -.12,0))
     ax1 = ax.twinx()
 
     print('Slater termpos by year')
@@ -190,9 +192,10 @@ def plot_uplen_termpos(fig, slfit, pub=False):
     ax = fig.add_axes(_rect(.02,0, 0,0))
 
     _ = slfit    # shortcut
+
     #print('up_len_km (x) vs. Slater termpos (y)')
     #print(termpos_lr)
-    ax.scatter(_.up_len_km_b1, _.termpos_b1, marker='.')
+    ax.scatter(_.up_len_km_b1, _.termpos_b1, marker='.', c=_.bbins1, cmap=sigma_by_velyear_cmap)
     ax.plot(
         _.up_len_km_b1,
         _.termpos_lr.slope*_.up_len_km_b1 + _.termpos_lr.intercept)
@@ -295,8 +298,8 @@ publish_combos = {
     ('Hayes N', 'sigma_by_year'),
     ('Lille', 'mapcbar'),
     ('Lille', 'yearcbar'),
-#    ('Lille', 'map'),
-#    ('Lille', 'termpos_residuals'),
+    ('Lille', 'map'),
+    ('Lille', 'termpos_residuals'),
 }
 
 for gname in ('Puisortoq N', 'Puisortoq S', 'Eqip Sermia', 'Gyldenlove N', 'Kujalleq', 'Lille', 'AP Bernstorff', 'Inngia', 'Cornell N', 'Hayes NN'):
@@ -304,10 +307,7 @@ for gname in ('Puisortoq N', 'Puisortoq S', 'Eqip Sermia', 'Gyldenlove N', 'Kuja
         publish_combos.add(x)
 # ---------------------------------------------------------
 
-def plot_page(odir, odir_pub, selrow, velterm_df, draft=True, pub=False):
-    os.makedirs(odir, exist_ok=True)
-#    shutil.copy('fontsize.sty', odir)
-
+def plot_page(odir_gl, odir_pub, selrow, velterm_df, make_rapsheet=True, pub=False):
     slfit = stability.fit_slater_residuals(selrow, velterm_df)
     rlr = slfit.resid_lr
 
@@ -317,20 +317,27 @@ def plot_page(odir, odir_pub, selrow, velterm_df, draft=True, pub=False):
 #    if abs(slfit.up_len_km_b1[-1] - slfit.up_len_km_b1[0]) < .8:
 #        raise ValueError('Not Enough Retreat')
 
-    with open(os.path.join(odir, 'page.tex'), 'w') as out:
-        out.write(page_tpl.substitute(
-            TITLE='{} - {} - w={} r={}'.format(
-                selrow['ns481_grid'],
-                selrow.w21t_Glacier,
-                selrow.w21t_glacier_number, int(selrow.sl19_rignotid)),
-            Title1=r'Terminus and Melt \\ \tiny{blue: Slater Terminus; orange: MEASURES Terminus; green: Melt}',
-            Title2='Terminus Translation',
-            Title3='$\sigma$ by Velocity Year',
-            #Title3='Melt vs. Terminus (5-yr)',
-            Title4=r'{} vs. Terminus Residuals \\ \tiny {}slope={:1.3f}, R={:1.2f}, p={:1.4f}{}'.format(
-                r'$\sigma$', '{', rlr.slope*1000, abs(rlr.rvalue), rlr.pvalue, '}'),
-        ))
+    if make_rapsheet:
+        os.makedirs(odir_gl, exist_ok=True)
+        shutil.copy('fontsize.sty', odir_gl)
 
+        with open(os.path.join(odir_gl, 'page.tex'), 'w') as out:
+            out.write(page_tpl.substitute(
+                TITLE='{} - {} - w={} r={}'.format(
+                    selrow['ns481_grid'],
+                    selrow.w21t_Glacier,
+                    selrow.w21t_glacier_number, int(selrow.sl19_rignotid)),
+                Title1=r'Terminus and Melt \\ \tiny{blue: Slater Terminus; orange: MEASURES Terminus; green: Melt}',
+                Title2='Terminus Translation',
+                Title3='$\sigma$ by Velocity Year',
+                #Title3='Melt vs. Terminus (5-yr)',
+                Title4=r'{} vs. Terminus Residuals \\ \tiny {}slope={:1.3f}, R={:1.2f}, p={:1.4f}{}'.format(
+                    r'$\sigma$', '{', rlr.slope*1000, abs(rlr.rvalue), rlr.pvalue, '}'),
+            ))
+
+
+#    if pub:
+#        os.makedirs(odir_pub, exist_ok=True)
 
     small = (5.5,4.5)
     for fname,size, do_plot in [
@@ -340,13 +347,13 @@ def plot_page(odir, odir_pub, selrow, velterm_df, draft=True, pub=False):
         ('sigma_by_year', small, lambda fig: plot_sigma_by_velyear(fig, slfit, pub=pub)),
         ('termpos_residuals', small, lambda fig: plot_termpos_residuals(fig, slfit, pub=pub)),
         ('map', (8.,4.), lambda fig: plot_reference_map(fig, selrow)),
-        ('mapcbar', (5.,0.6), lambda fig: stability.plot_reference_cbar(fig)),
+        ('mapcbar', (5.,0.6), lambda fig: plot_reference_cbar(fig)),
         ('yearcbar', (5.,0.6), lambda fig: plot_year_cbar(fig))]:
 
-        if draft:
+        if make_rapsheet:
             fig = matplotlib.pyplot.figure(figsize=size)
             do_plot(fig)
-            fig.savefig(os.path.join(odir, fname+'.png'))
+            fig.savefig(os.path.join(odir_gl, fname+'.png'))
 
         if (selrow.w21t_Glacier, fname) in publish_combos:
             ofname = os.path.join(odir_pub, fname+'_300.png')
@@ -364,11 +371,11 @@ def plot_page(odir, odir_pub, selrow, velterm_df, draft=True, pub=False):
 
             fig.clf()
 
-    if draft:
+    if make_rapsheet:
         cmd = ['pdflatex', 'page.tex']
         env = dict(os.environ.items())
         env['TEXINPUTS'] = '.:..:../..:'
-        subprocess.run(cmd, cwd=odir, env=env, check=True)
+        subprocess.run(cmd, cwd=odir_gl, env=env, check=True)
 
     # Return the data we computed along the way
     ret = slfit._asdict()
@@ -380,22 +387,25 @@ def plot_page(odir, odir_pub, selrow, velterm_df, draft=True, pub=False):
     del ret['resid_df']
     return ret
 
-def main():
+def all_plots(make_rapsheet, pub):
 
     # Bigger fonts
     # https://stackabuse.com/change-font-size-in-matplotlib/
     # (refer back if this doesn't fix tick label sizes)
     matplotlib.pyplot.rcParams['font.size'] = '16'
 
-    select = d_stability.read_select(map_wkt)
+#    select = d_stability.read_select(map_wkt)
+    select = d_stability.read_extract(map_wkt, joins={'w21', 'sl19', 'fj', 'w21t'})
+    print(list(select.columns))
     velterm_df = d_velterm.read()
 
-    odir = 'tw_plots2'
-    os.makedirs(odir, exist_ok=True)
-    selrow = select.df.iloc[11]
+    #odir = 'tw_plots2'
+    #os.makedirs(odir, exist_ok=True)
+    selrow = select.iloc[11]
 
     rows = list()
-    for ix,selrow in select.df.iterrows():
+    rows2 = list()
+    for ix,selrow in select.iterrows():
         if np.isnan(selrow.sl19_rignotid):
             # No Slater19 data
             continue
@@ -408,8 +418,13 @@ def main():
             selrow.ns481_grid.replace('.',''),
             selrow.w21t_glacier_number,
             selrow.w21t_Glacier.replace('_','-').replace('.',''))
-        odir_gl = os.path.join(odir, leaf)
-        odir_pub = os.path.join(PUB_ROOT, leaf)
+        odir_gl = uafgi.data.join_outputs('rapsheets', leaf)
+        #odir_gl = os.path.join(odir, leaf)
+        #odir_pub = os.path.join(PUB_ROOT, leaf)
+        odir_pub = uafgi.data.join_plots(leaf)
+
+#        os.makedirs(odir_gl, exist_ok=True)
+#        os.makedirs(odir_pub, exist_ok=True)
 
         # Quicker debugging
 #        if os.path.exists(ofname):
@@ -418,13 +433,34 @@ def main():
 #        with ioutil.TmpDir() as tdir:
         if True:
             try:
-                row = plot_page(odir_gl, odir_pub, selrow, velterm_df, draft=False, pub=True)
+                row = plot_page(odir_gl, odir_pub, selrow, velterm_df, make_rapsheet=make_rapsheet, pub=pub)
                 #os.rename(os.path.join(tdir.location, 'page.pdf'), ofname)
+                # Make DataFrame for collect program
                 row['plot_page'] = leaf
                 row['ns481_grid'] = selrow.ns481_grid
                 row['w21t_glacier_number'] = selrow.w21t_glacier_number
                 row['w21t_Glacier'] = selrow.w21t_Glacier
                 rows.append(row)
+
+                # Make CSV-able DataFrame for users
+                row2 = dict()
+#                row2['w21t_Glacier'] = selrow.w21t_Glacier
+                row2['w21t_glacier_number'] = selrow.w21t_glacier_number
+#                row2['ns481_grid'] = selrow.ns481_grid
+
+                lr = row['termpos_lr']
+                for k in lr._fields:
+                    row2[f'tp_{k}'] = getattr(lr, k)
+
+                lr = row['slater_lr']
+                for k in lr._fields:
+                    row2[f'sl_{k}'] = getattr(lr, k)
+
+                lr = row['resid_lr']
+                for k in lr._fields:
+                    row2[f'rs_{k}'] = getattr(lr, k)
+                rows2.append(row2)
+
                 #break        # DEBUG: Just one plot
             except Exception as e:
                 shutil.rmtree(odir_gl, ignore_errors=True)
@@ -432,10 +468,52 @@ def main():
                 traceback.print_exc()
                 sys.stderr.flush()
 
-    df = pd.DataFrame(rows)
-    df.to_pickle('16_slfit.df')
+    if make_rapsheet:
+        # Main CSV file for users
+        df = pd.DataFrame(rows2)
+        select = d_stability.read_extract_raw()
+        df = pd.merge(select, df, how='left', on='w21t_glacier_number')
+        df.to_csv(uafgi.data.join_outputs('stability', 'greenland_calving.csv'))
 
 
+        resid_df = pd.DataFrame(rows)
+        # No need to write out, we use it right here!
+        #resid_df.to_pickle(uafgi.data.join_outputs('rapsheets', 'regressions.df'))
+        # resid_df = pd.read_pickle(uafgi.data.join_outputs('rapsheets', 'regressions.df'))
+
+        # Categorize glacier behavior, and put in different PDF files
+        destabilize = list()
+        stabilize = list()
+        insig = list()
+        for ix,row in resid_df.iterrows():
+            print(row)
+            rlr = row.resid_lr
+
+            # Not significant
+            if rlr.pvalue > 0.13:
+                insig.append(row)
+                continue
+
+            if row.resid_lr.slope < 0:
+                destabilize.append(row)
+                continue
+            else:
+                stabilize.append(row)
+                continue
+
+
+        for catname,eles in (('destabilize',destabilize), ('stabilize',stabilize), ('insignificant',insig)):
+            fnames = [uafgi.data.join_outputs('rapsheets', row.plot_page, 'page.pdf') for row in eles]
+            cmd = ['pdftk'] + fnames + ['cat', 'output', uafgi.data.join_outputs(f'rapsheets_{catname}.pdf')]
+            subprocess.run(cmd)
+
+
+def main():
+    # Make select publication plots
+    all_plots(False, True)
+
+    # Make rapsheets for all glaciers
+#    all_plots(True, False)
 
 
 page_tpl = string.Template(r"""

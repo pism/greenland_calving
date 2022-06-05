@@ -1,3 +1,4 @@
+import uafgi.data
 from uafgi.data import d_velterm
 from uafgi import stability,ioutil
 import uafgi.data.wkt
@@ -6,7 +7,6 @@ import matplotlib.pyplot as plt
 import os,subprocess
 import matplotlib
 
-PUB_ROOT = '/Users/eafischer2/overleaf/CalvingPaper/plots'
 map_wkt = uafgi.data.wkt.nsidc_ps_north
 
 def write_plot(fig, ofname):
@@ -24,13 +24,14 @@ def main():
     # (refer back if this doesn't fix tick label sizes)
     matplotlib.pyplot.rcParams['font.size'] = '16'
 
-    select = d_stability.read_select(map_wkt)
+    select = d_stability.read_extract(map_wkt, joins={'w21', 'sl19'})
     velterm_df = d_velterm.read()
 
     # Get AP Barnstorff Glacier (ID 65)
-    df = select.df.set_index('w21t_glacier_number')
+    df = select.set_index('w21t_glacier_number')
 #    selrow = df.loc[62]
-    selrow = select.df[select.df.w21t_glacier_number == 62].iloc[0]
+
+    selrow = select[select.w21t_glacier_number == 62].iloc[0]
     print(selrow)
     print(list(df.columns))
     print(selrow['w21t_glacier_number'])
@@ -48,6 +49,6 @@ def main():
 #    plt.title(selrow.w21t_Glacier)
 
     leaf = 'resid_{}'.format(selrow.ns481_grid)
-    write_plot(plt, os.path.join(PUB_ROOT, leaf+'.png'))
+    write_plot(plt, uafgi.data.join_plots(leaf+'.png'))
 
 main()

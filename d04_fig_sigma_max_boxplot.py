@@ -16,6 +16,7 @@ import pyproj
 import shapely
 import copy
 from uafgi import gicollections,cfutil,glacier,gdalutil,shputil,pdutil,ioutil
+import uafgi.data
 import uafgi.data.ns642
 import netCDF4
 import matplotlib.pyplot as plt
@@ -30,9 +31,6 @@ import uafgi.data.stability as d_stability
 import scipy,subprocess
 from uafgi.pism import qregress
 
-PUB_ROOT = '/Users/eafischer2/overleaf/CalvingPaper/plots'
-
-
 def write_plot(fig, ofname):
     # Write plot and shrink
     with ioutil.TmpDir() as tdir:
@@ -46,13 +44,13 @@ def write_plot(fig, ofname):
 
 # =================================================
 def main():
-    select = d_stability.read_select(map_wkt)
+    select = d_stability.read_extract(map_wkt)
     velterm_df = d_velterm.read()
 
     # Cache sigmas computation while we get the graph right.
     try:
         sigmas = pd.read_pickle('sigmas.df')
-    except:
+    except FileNotFoundError:
         sigmas = qregress.fit_sigma_maxs(select,velterm_df)
         sigmas.to_pickle('sigmas.df')
 
@@ -99,7 +97,7 @@ def main():
     ## https://stackoverflow.com/questions/12998430/remove-xticks-in-a-matplotlib-plot
     #ax.set_xticks([],[])
 
-    write_plot(plt, os.path.join(PUB_ROOT, 'sigma_max_by_glacier.png'))
+    write_plot(plt, uafgi.data.join_plots('sigma_max_by_glacier.png'))
 
     # -----------------------------------------
     plt.rcParams['font.size'] = 12
@@ -114,7 +112,7 @@ def main():
 
     plt.suptitle('')    # Remove title added by boxplot()
     plt.title('')
-    write_plot(plt, os.path.join(PUB_ROOT, 'sigma_max_by_year.png'))
+    write_plot(plt, uafgi.data.join_plots('sigma_max_by_year.png'))
 
 
 main()

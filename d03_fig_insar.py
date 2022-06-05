@@ -42,15 +42,14 @@ import numpy as np
 import traceback
 import pandas as pd
 
-from uafgi import cgutil
 # Plots figure for the paper
 # ...the insar_* figures
 
-PUB_ROOT = '/Users/eafischer2/overleaf/CalvingPaper/plots'
 map_wkt = uafgi.data.wkt.nsidc_ps_north
 
 
 def write_plot(fig, ofname):
+    print('Writing plot to ', ofname)
     # Write plot and shrink
     with ioutil.TmpDir() as tdir:
         fname0 = tdir.filename() + '.png'
@@ -109,12 +108,6 @@ def plot_velocity_map(selrow, plot_year):
         vv = nc.variables['v_ssa_bc'][plot_year-1985,:]
         vel = np.sqrt(uu*uu + vv*vv) * .001    # Convert to km/a
 
-
-    # -------------- Get info on the grid
-    grid = selrow.ns481_grid
-    grid_file = uafgi.data.measures_grid_file(grid)
-    grid_info = gdalutil.FileInfo(grid_file)
-
     # ---------- Plot velocities in fjord
     fjord_gd = bedmachine.get_fjord_gd(bedmachine_file, selrow.fj_poly)
     fjord = np.flip(fjord_gd, axis=0)
@@ -123,30 +116,23 @@ def plot_velocity_map(selrow, plot_year):
 
     cmap,_,_ = cptutil.read_cpt('palettes/001-fire-10.cpt')
 
-#    pcm_vel = ax.pcolormesh(
-#        xx, yy, velm, transform=mapinfo.crs,
-#        cmap=cmap, vmin=0, vmax=5.000)
-
+    pcm_vel = ax.pcolormesh(
+        xx, yy, velm, transform=mapinfo.crs,
+        cmap=cmap, vmin=0, vmax=5.000)
 #    cbar = fig.colorbar(pcm_vel, ax=ax)
 #    cbar.set_label('Velocities (m/a)')
         
     # Plot the termini
     date_termini = sorted(selrow.w21t_date_termini)
 
-    yydd = [dtutil.year_fraction(dt) for dt,_ in date_termini]
-#    year_termini = [(y,t) for y,(_,t) in zip(yydd, date_termini) if y > 2000]
-    year_termini = [(y,t) for y,(_,t) in zip(yydd, date_termini) if y >= plot_year]
+    yy = [dtutil.year_fraction(dt) for dt,_ in date_termini]
+#    year_termini = [(y,t) for y,(_,t) in zip(yy, date_termini) if y > 2000]
+    year_termini = [(y,t) for y,(_,t) in zip(yy, date_termini) if y >= plot_year]
 
     for year,term in year_termini:
         print(year)
         if int(year) == plot_year:
-            termx = cgutil.extend_linestring(term, 100000.)
-
-            fjc_gd = glacier.classify_fjord(fjord_gd, grid_info, selrow.up_loc, term)
-            fjc = np.flip(fjc_gd, axis=0)
-
-#            ax.add_geometries([termx], crs=mapinfo.crs, edgecolor='xkcd:red', facecolor='none', alpha=.3)
-            ax.add_geometries([term], crs=mapinfo.crs, edgecolor='xkcd:black', facecolor='none', alpha=.8,linewidth=.7)
+            ax.add_geometries([term], crs=mapinfo.crs, edgecolor='xkcd:neon green', facecolor='none', alpha=.8)
 
     bounds = date_termini[0][1].bounds
     for _,term in date_termini:
@@ -157,39 +143,11 @@ def plot_velocity_map(selrow, plot_year):
             max(bounds[3],term.bounds[3]))
     x0,y0,x1,y1 = bounds
 
-    # Plot the up-fjord and down-fjord
-    cmap = matplotlib.colors.LinearSegmentedColormap.from_list('single', [(0,0,0), (0,1.0,1.0)])
-    up_fjord = np.isin(fjc, glacier.GE_TERMINUS)
-    up_fjord = np.ma.masked_where(np.logical_not(up_fjord), up_fjord).astype('i')
-    ax.pcolormesh(
-        xx, yy, up_fjord, transform=mapinfo.crs, cmap=cmap, vmin=0, vmax=1)#        vmin=0, vmax=5.000)
-
-#    cmap = matplotlib.colors.LinearSegmentedColormap.from_list('single', [(0,0,0), (1.0,1.0,0.0)])
-    cmap = matplotlib.colors.LinearSegmentedColormap.from_list('single', [(0,0,0), (1.0,0.0,0.0)])
-    up_fjord = np.isin(fjc, glacier.TERMINUS)
-    up_fjord = np.ma.masked_where(np.logical_not(up_fjord), up_fjord)
-    ax.pcolormesh(
-        xx, yy, up_fjord, transform=mapinfo.crs, cmap=cmap, vmin=0, vmax=1)#        vmin=0, vmax=5.000)
-
-
-
-    # Plot fjord polygon
-    print(type(selrow.fj_poly))
-    print(selrow.fj_poly)
-    ax.add_geometries([selrow.fj_poly], crs=mapinfo.crs, edgecolor='xkcd:black', facecolor='red', alpha=.2)
-
-    # Plot up_loc
-    print(selrow.up_loc)
-    ax.plot(selrow.up_loc.x, selrow.up_loc.y, marker='*', color='red')
-#    ax.add_geometries([selrow.up_loc], crs=mapinfo.crs, marker='*')
-
-#    return
-
     # Limit extent to near terminus
     #dx=5000
     dx=10000
-    ax.set_extent(extents=(x0-18000,x1+5000,y0-5000,y1+17000), crs=mapinfo.crs)
-#    ax.set_extent(extents=(x0-13000,x1+5000,y0-5000,y1+14000), crs=mapinfo.crs)
+    ax.set_extent(extents=(x0-13000,x1+5000,y0-5000,y1+14000), crs=mapinfo.crs)
+#    ax.set_extent(extents=(x0-5000,x1+5000,y0-5000,y1+5000), crs=mapinfo.crs)
 
     # Plot scale in km
     cartopyutil.add_osgb_scalebar(ax)#, at_y=(0.10, 0.080))
@@ -207,13 +165,13 @@ def plot_velocity_map(selrow, plot_year):
         label='Direction of Ice Flow')
     ax.annotate('Ice Flow', xy=(.725, .07), xycoords='axes fraction', size=10, ha='center')
 
-    leaf = 'uparea_{}_{}'.format(selrow.ns481_grid, str(plot_year))
-    write_plot(fig, os.path.join(PUB_ROOT, leaf+'.png'))
+    leaf = 'insar_{}_{}'.format(selrow.ns481_grid, str(plot_year))
+    write_plot(fig, uafgi.data.join_plots(leaf+'.png'))
 
 
 
     # ---------- The colorbar
-    for suffix,pcm in (('elev', pcm_elev),):
+    for suffix,pcm in (('elev', pcm_elev), ('vel', pcm_vel)):
         fig,axs = matplotlib.pyplot.subplots(
             nrows=1,ncols=1,
             figsize=small)
@@ -227,7 +185,7 @@ def plot_velocity_map(selrow, plot_year):
         cbar_ax.remove()   # https://stackoverflow.com/questions/40813148/save-colorbar-for-scatter-plot-separately
 #        cbar_ax.yaxis.set_label_position('left')
 
-        write_plot(fig, os.path.join(PUB_ROOT, 'uparea_{}_{}.png'.format(selrow.ns481_grid, suffix)))
+        write_plot(fig, uafgi.data.join_plots('insar_{}_{}.png'.format(selrow.ns481_grid, suffix)))
 
 
 
@@ -242,18 +200,19 @@ def main():
     # (refer back if this doesn't fix tick label sizes)
     matplotlib.pyplot.rcParams['font.size'] = '16'
 
-    select = d_stability.read_select(map_wkt)
+    #select = d_stability.read_select(map_wkt)
+    select = d_stability.read_extract(map_wkt, joins={'fj','w21t'})
     velterm_df = d_velterm.read()
 
     # Get AP Barnstorff Glacier (ID 65)
-    df = select.df.set_index('w21t_glacier_number')
+    df = select.set_index('w21t_glacier_number')
     selrow = df.loc[62]
     print(selrow)
 
 #    plot_velocity_map(fig, selrow)
 
 #    for plot_year in (1990, 1995, 1996, 2005):
-    for plot_year in (2005,):
+    for plot_year in (1990, 1996, 2005):
         plot_velocity_map(selrow, plot_year)
 #    plot_year = 2005   # A bit wrong
 #    plot_year = 1996   # No good data

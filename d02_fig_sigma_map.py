@@ -23,15 +23,15 @@ from uafgi import gicollections,cfutil,glacier,gdalutil,shputil,pdutil,cartopyut
 import uafgi.data.ns642
 import netCDF4
 import matplotlib.pyplot as plt
+import uafgi.data
 import uafgi.data.wkt
 import uafgi.data.w21 as d_w21
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 itslive_file = 'outputs/itslive/GRE_G0240_W70.90N_1985_2018.nc'
-sigma_file = 'outputs/itslive/GRE_G0240_W70.90N_1985_2018_sigma.nc'
+sigma_file = 'outputs/itslive/sigma/GRE_G0240_W70.90N_1985_2018_sigma.nc'
 bm_file = 'outputs/bedmachine/BedMachineGreenland-2017-09-20_W70.90N.nc'
 termini_file = 'data/wood2021/Greenland_Glacier_Ice_Front_Positions.shp'
-PUB_ROOT = '/Users/eafischer2/overleaf/CalvingPaper/plots'
 
 def write_plot(fig, ofname):
     # Write plot and shrink
@@ -111,7 +111,7 @@ def main():
     ax.add_geometries(termini, crs=map_crs, facecolor="none", edgecolor='red', alpha=0.8)
     cartopyutil.add_osgb_scalebar(ax, text_color='black')
 
-    write_plot(fig, os.path.join(PUB_ROOT, 'vector_map.png'))
+    write_plot(fig, uafgi.data.join_plots('vector_map.png'))
 
 
     # ---------- The colorbar
@@ -122,7 +122,7 @@ def main():
     cbar_ax = axs
     cbar = fig.colorbar(pcm, ax=cbar_ax)
     cbar_ax.remove()   # https://stackoverflow.com/questions/40813148/save-colorbar-for-scatter-plot-separately
-    write_plot(fig, os.path.join(PUB_ROOT, 'vector_map_cbar.png'))
+    write_plot(fig, uafgi.data.join_plots('vector_map_cbar.png'))
 
 
     # ===================================================================
@@ -152,7 +152,7 @@ def main():
     cartopyutil.add_osgb_scalebar(ax, text_color='white')
 
     #plt.show()
-    write_plot(fig, os.path.join(PUB_ROOT, 'sigma_map.png'))
+    write_plot(fig, uafgi.data.join_plots('sigma_map.png'))
 
     # ---------- The colorbar
     fig,axs = plt.subplots(
@@ -162,7 +162,7 @@ def main():
     cbar_ax = axs
     cbar = fig.colorbar(pcm, ax=cbar_ax)
     cbar_ax.remove()   # https://stackoverflow.com/questions/40813148/save-colorbar-for-scatter-plot-separately
-    write_plot(fig, os.path.join(PUB_ROOT, 'sigma_map_cbar.png'))
+    write_plot(fig, uafgi.data.join_plots('sigma_map_cbar.png'))
 
 
 

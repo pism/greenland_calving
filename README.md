@@ -49,3 +49,6 @@ mkdir outputs
 ```
 
 
+a06_greenland_map.py: Must first download ITS-LIVE and BedMachine, and run a04_localize_bedmachine.py
+
+b04_plot_rapsheets.py: Needs pdflatex and ImageMagick

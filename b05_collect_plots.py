@@ -1,11 +1,13 @@
 import os
 import subprocess
 import pandas as pd
+import uafgi.data
 
-odir = 'tw_plots2'
+#odir = 'tw_plots2'
+odir = uafgi.data.join_outputs()
 
 def main():
-    resid_df = pd.read_pickle('16_slfit.df')
+    resid_df = pd.read_pickle(uafgi.data.join_outputs('rapsheets', 'regressions.df'))
 
     pro = list()
     con = list()
@@ -32,7 +34,7 @@ def main():
             continue
 
 
-    for catname,eles in (('pro',pro), ('con',con), ('insig',insig)):
+    for catname,eles in (('destabilize',pro), ('stabilize',con), ('insignificant',insig)):
         fnames = [os.path.join(odir,row.plot_page, 'page.pdf') for row in eles]
         cmd = ['pdftk'] + fnames + ['cat', 'output', '{}.pdf'.format(catname)]
         subprocess.run(cmd)

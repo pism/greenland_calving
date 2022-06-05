@@ -81,7 +81,7 @@ def gimpdem_local_rule(ns481_grid):
         [ofname])
 
 # -------------------------------------------------------------
-MAKEDIR = './a05_compute_sigma.mk'
+MAKEDIR = './b01_compute_sigma.mk'
 def render_bedmachine_makefile(select):
     """Given a Glacier selection, creates a Makefile to create all the
     localized BedMachine files required for it."""
@@ -106,7 +106,7 @@ def render_bedmachine_makefile(select):
 
         # Compute von Mises stress for it
         rule = flow_simulation.compute_sigma_rule(
-            rule.outputs[0], uafgi.data.join_outputs('itslive'))
+            rule.outputs[0], uafgi.data.join_outputs('itslive', 'sigma'))
         makefile.add(rule)
         targets.append(rule.outputs[0])
 

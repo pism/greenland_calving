@@ -38,7 +38,7 @@ for ix,selrow in select.df.iterrows():
     print('=== Termini for glacier: {} {}'.format(selrow.ns481_grid, selrow.w21t_Glacier))
 
     # Determine velocity file (and sigma and BedMachine) for this glacier
-    tpl = uafgi.data.join_outputs('itslive', 'GRE_G0240_{}_1985_2018').format(selrow.ns481_grid)
+    tpl = uafgi.data.join_outputs('itslive', 'sigma', 'GRE_G0240_{}_1985_2018').format(selrow.ns481_grid)
     velocity_file = tpl+'.nc'
     sigma_file = tpl+'_sigma.nc'
     bedmachine_file = uafgi.data.join_outputs('bedmachine', 'BedMachineGreenland-2017-09-20_{}.nc'.format(selrow.ns481_grid))
