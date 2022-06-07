@@ -90,8 +90,7 @@ The following column name prefixes describe three regressions used for the resul
 
 * **[rs]:** Regression of terminus reiduals vs sigma, as described in this study.
 
-outputs/velterm/velterm.csv
-``````````````````````````
+### outputs/velterm/velterm.csv
 
 The raw results of integrating each terminus/velocity pair, as described in the study.  Columns are:
 
@@ -116,8 +115,7 @@ The raw results of integrating each terminus/velocity pair, as described in the 
 * **glacier_id:** The `w21t_glacier_number` identifying the glacier for this terminus / velocity combination.
 
 
-outputs/rapsheets_*.pdf
-'''''''''''''''''''''''
+### outputs/rapsheets_*.pdf
 
 A "rap sheet" summarizing the results of the experiment on each glacier.  Rap sheets are organized into thee cateogires, as described in this study.  The same rainbow color scale is used to plot points and terminus lines for all plots except the first on each page.
 
