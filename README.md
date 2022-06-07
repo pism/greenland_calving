@@ -21,8 +21,8 @@ This document describes the nature and contents of each of the four files.
 
 Contains the full results of the experiment described in the paper, including a single-page "rap sheet" summarizing each glacier studied.  Does not contain the code or data used to generate those results.
 
-outputs/stability/greenland_calving.csv
-'''''''''''''''''''''''''''''''''''''''
+### outputs/stability/greenland_calving.csv
+
 
 The "master table" of the study, including input datasets and results.  The study relied on data from multiple previous studies, and this table provides the key to corresponding glaciers between studies.  For example, the terminus data provided by Wood et al (2021) in the file `AP Bernstorff Data.nc` corresponds to the glacier called `A.P. Bernstorf Gl.` or glacier number 62 in the Wood et al (2021) supplement spreadsheet.  It is also the same as the glacier `GGN0089` in Bjørk, Kruse, Michaelsen (2015) and Glacier number 190 of NSIDC Dataset 642.  Each dataset is encoded as a column name prefix:
 
