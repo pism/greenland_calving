@@ -66,14 +66,17 @@ def _combine_env_data(env_data_full, env_data_hist):
 
 def main():
     env_data_full = export_env()
+    with open('conda_env_full.yaml', 'w') as out:
+        yaml.dump(env_data_full, out)
     env_data_hist = export_env(history_only=True)
     env_data = _combine_env_data(env_data_full, env_data_hist)
-    yaml.dump(env_data, sys.stdout)
-    print('Warning: this output might contain packages installed from non-public sources, e.g. a Git repository. '
-          'You should review and test the output to make sure it works with `conda env create -f`, '
-          'and make changes as required.\n'
-          'For example, `conda-env-export` itself is not currently uploaded to PyPI, and it must be removed from '
-          'the output file, or else `conda create -f` will fail.', file=sys.stderr)
+    with open('conda_env.yaml', 'w') as out:
+        yaml.dump(env_data, out)
+#    print('Warning: this output might contain packages installed from non-public sources, e.g. a Git repository. '
+#          'You should review and test the output to make sure it works with `conda env create -f`, '
+#          'and make changes as required.\n'
+#          'For example, `conda-env-export` itself is not currently uploaded to PyPI, and it must be removed from '
+#          'the output file, or else `conda create -f` will fail.', file=sys.stderr)
 
 
 if __name__ == '__main__':

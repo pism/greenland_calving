@@ -36,7 +36,7 @@ stability.df['up_lat'] = col_lonlat.map(lambda pt: pt[1])
 
 
 # Select out columns for data publication
-df = stability.df[['w21t_Glacier', 'w21t_glacier_number', 'w21t_lon', 'w21t_lat', 'w21_key', 'w21_data_fname', 'fj_fid', 'ns481_grid', 'up_fid', 'up_id', 'up_lon', 'up_lat', 'bkm15_id', 'cf20_key', 'cf20_glacier_id', 'ns642_GlacierID', 'sl19_bjorkid', 'sl19_rignotid', 'sl19_key']]
+df = stability.df[['w21t_Glacier', 'w21t_glacier_number', 'w21t_lon', 'w21t_lat', 'w21_key', 'fj_fid', 'ns481_grid', 'up_fid', 'up_id', 'up_lon', 'up_lat', 'bkm15_id', 'cf20_key', 'cf20_glacier_id', 'ns642_GlacierID', 'sl19_bjorkid', 'sl19_rignotid', 'sl19_key']]
 
 odir = os.path.join('outputs', 'stability')
 

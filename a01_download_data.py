@@ -43,26 +43,26 @@ def shapefiles2(fname):
     return [fname+suffix for suffix in ('.cpg', '.dbf','.prj','.shp', '.shx')]
 
 
-# Data Generated in this Study: Join Overrides Table
-odir = os.path.join(DATA, 'stability_overrides')
-leaves = ['overrides.ods', 'sl19_match.ods'] + shapefiles('terminus_locations')
-makefile.add(Rule(
-    [], [os.path.join(odir,leaf) for leaf in leaves],
-    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/stability_overrides/ {odir}']))
+## Data Generated in this Study: Join Overrides Table
+#odir = os.path.join(DATA, 'stability_overrides')
+#leaves = ['overrides.ods', 'sl19_match.ods'] + shapefiles('terminus_locations')
+#makefile.add(Rule(
+#    [], [os.path.join(odir,leaf) for leaf in leaves],
+#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/stability_overrides/ {odir}']))
 
-# Data Generated in this Study: Fjord Outlines
-odir = os.path.join(DATA, 'fj')
-leaves = ['README.txt'] + shapefiles('fjord_outlines')
-makefile.add(Rule(
-    [], [os.path.join(odir,leaf) for leaf in leaves],
-    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/fj/ {odir}']))
+## Data Generated in this Study: Fjord Outlines
+#odir = os.path.join(DATA, 'fj')
+#leaves = ['README.txt'] + shapefiles('fjord_outlines')
+#makefile.add(Rule(
+#    [], [os.path.join(odir,leaf) for leaf in leaves],
+#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/fj/ {odir}']))
 
-# Data Generated in this Study: Upstream Point for each glacier
-odir = os.path.join(DATA, 'upstream')
-leaves = ['README.txt'] + shapefiles('upstream_points')
-makefile.add(Rule(
-    [], [os.path.join(odir,leaf) for leaf in leaves],
-    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/upstream/ {odir}']))
+## Data Generated in this Study: Upstream Point for each glacier
+#odir = os.path.join(DATA, 'upstream')
+#leaves = ['README.txt'] + shapefiles('upstream_points')
+#makefile.add(Rule(
+#    [], [os.path.join(odir,leaf) for leaf in leaves],
+#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/upstream/ {odir}']))
 
 
 # -----------------------------------------------------------
