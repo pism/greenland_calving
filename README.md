@@ -1,5 +1,5 @@
-Greenland Calving Paper
-=======================
+Repo for Greenland Calving Paper
+================================
 
 Elizabeth Fischer  
 June, 2022
