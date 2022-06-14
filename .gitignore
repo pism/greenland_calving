@@ -4,3 +4,5 @@
 *.mk
 #*
 *.df
+__pycache__
+.DS_Store
