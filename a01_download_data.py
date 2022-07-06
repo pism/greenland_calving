@@ -48,21 +48,21 @@ def shapefiles2(fname):
 #leaves = ['overrides.ods', 'sl19_match.ods'] + shapefiles('terminus_locations')
 #makefile.add(Rule(
 #    [], [os.path.join(odir,leaf) for leaf in leaves],
-#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/stability_overrides/ {odir}']))
+#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy greenland_calving:/stability_overrides/ {odir}']))
 
 ## Data Generated in this Study: Fjord Outlines
 #odir = os.path.join(DATA, 'fj')
 #leaves = ['README.txt'] + shapefiles('fjord_outlines')
 #makefile.add(Rule(
 #    [], [os.path.join(odir,leaf) for leaf in leaves],
-#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/fj/ {odir}']))
+#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy greenland_calving:/fj/ {odir}']))
 
 ## Data Generated in this Study: Upstream Point for each glacier
 #odir = os.path.join(DATA, 'upstream')
 #leaves = ['README.txt'] + shapefiles('upstream_points')
 #makefile.add(Rule(
 #    [], [os.path.join(odir,leaf) for leaf in leaves],
-#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/upstream/ {odir}']))
+#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy greenland_calving:/upstream/ {odir}']))
 
 
 # -----------------------------------------------------------
@@ -74,7 +74,7 @@ odir = os.path.join(DATA, 'wood2021')
 leaves = ['aba7282_Table_S1.xlsx', 'doi_10.7280_D1667W__v6-3.zip']
 makefile.add(Rule(
     [], [os.path.join(odir,leaf) for leaf in leaves],
-    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/wood2021/ {odir}',
+    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy greenland_calving:/wood2021/ {odir}',
     f'python download_scripts/unzip_wood2021.py']))
 
 # Extract / preprocess Wood et al 2021 data
@@ -163,7 +163,7 @@ for year in range(1985,2019):
 #   https://drive.google.com/drive/u/1/folders/158Iv-bxrKuJ3BmkGa3bGvAVC-cYrcxD_
 makefile.add(Rule(
     [], [os.path.join(DATA, 'bedmachine', 'BedMachineGreenland-2017-09-20.nc')],
-    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy alaska:/bedmachine/BedMachineGreenland-2017-09-20.nc {DATA}/bedmachine']))
+    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy greenland_calving:/bedmachine/BedMachineGreenland-2017-09-20.nc {DATA}/bedmachine']))
 
 # -----------------------------------------------------------
 # Bjørk et al, 2015

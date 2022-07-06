@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
-from uafgi import gdalutil,bedmachine,glacier,make,pdutil
-import uafgi.wkt
+from uafgi.util import make,pdutil
 import uafgi.data
 import uafgi.data.ns642
 import uafgi.data.itslive
@@ -54,7 +53,7 @@ def gimpdem_local_rule(ns481_grid):
 
     def action(tdir):
         import uafgi.data
-        from uafgi import gdalutil
+        from uafgi.util import gdalutil
         import subprocess
 
         os.makedirs(os.path.dirname(ofname), exist_ok=True)

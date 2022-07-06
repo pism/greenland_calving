@@ -15,7 +15,7 @@ import itertools
 import pyproj
 import shapely
 import copy
-from uafgi import gicollections,cfutil,glacier,gdalutil,shputil,pdutil,ioutil
+from uafgi.util import ioutil
 import uafgi.data
 import uafgi.data.ns642
 import netCDF4

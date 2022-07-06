@@ -22,14 +22,14 @@ from uafgi.data import d_sl19
 import uafgi.data.wkt
 from uafgi.data import greenland,stability
 import pickle
-from uafgi import bedmachine,glacier,cartopyutil,cptutil,dtutil
+from uafgi import bedmachine,glacier
+from uafgi.util import cartopyutil,cptutil,dtutil,ioutil
 import collections
 import scipy.stats
 import netCDF4
 
 
 import uafgi.data.wkt
-from uafgi import stability,ioutil,cptutil
 import uafgi.data.stability as d_stability
 from uafgi.data import d_velterm
 import mpl_toolkits.axes_grid1

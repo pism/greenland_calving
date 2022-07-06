@@ -2,7 +2,7 @@ import os
 import datetime
 import pandas as pd
 import scipy.interpolate
-from uafgi import dtutil, pdutil
+from uafgi.util import dtutil, pdutil
 from uafgi.pism import flow_simulation
 import uafgi.data.fj
 import uafgi.data.future_termini

@@ -1,7 +1,7 @@
 import subprocess
 import datetime
 from cffdrs import arcticfire
-from uafgi import cptutil
+from uafgi.util import cptutil
 
 # https://stackoverflow.com/questions/43599018/is-there-a-way-to-get-matplotlib-path-contains-points-to-be-inclusive-of-boundar
 #I do quite like this command in Jupiter notebook:
@@ -17,7 +17,7 @@ import itertools
 import pyproj
 import shapely
 import copy
-from uafgi import gicollections,cfutil,glacier,gdalutil,shputil,pdutil,cartopyutil
+from uafgi.util import shputil,cartopyutil
 import uafgi.data
 import uafgi.data.ns642
 import netCDF4

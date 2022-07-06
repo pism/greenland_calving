@@ -11,10 +11,115 @@ Supplements for Greenland Calving Paper
 =======================================
 
 
-The paper comes with four supplement files, allowing users to obtain full results of the experiment described in the paper, inspect the code used to produce those results, re-run the graphs, or even replicate the entire experiment.  They are mean to be unzipped into the same top-level directory.
+The paper comes with four supplement files, allowing users to obtain full results of the experiment described in the paper, inspect the code used to produce those results, re-run the graphs, or even replicate the entire experiment.  They are meant to be unzipped into the same top-level directory.
+
+
+1. **Create the top-level ("harness")** directory. It can be anywhere you like:
+   ```
+   mkdir ~/gc
+   cd gc
+   ```
+
+2. **Download the files into the harness.**  Each file is numbered.  You don't have to download them all; but if you download file $n$, you should download all the files with number $m<n$ as well.  Files are:
+   ```
+   1_greenland_calving_results.zip         (26 Mb)
+   2_greenland_calving_data.zip            (127 kb)
+   3_greenland_calving_code.zip            (20 Mb)
+   4_greenland_calving_sigmas.zip          (large)
+   ```
+
+   **NOTE:** If you use Safari, it might automatically unzip the files.  This behavior is not OK.  Try Firefox, `curl` or `wget` to download.
+
+
+3. **Install the code.** If you wish to use the Python code, install it now.  You have two options:
+
+   1. **OPTION 1: Use code from zipfiles***
+      ```
+      cd ~/gc
+      unzip 3_greenland_calving_code.zip
+      ```
+
+   2. **OPTION 2: Clone directly from GitHub.
+      ```
+      cd ~/gc
+      git clone https://github.com/pism/greenland_calving.git -b calving_paper
+      git clone https://githug.com/pism/uafgi.git -b calving_paper
+      ```
+
+4. **Install Anaconda.**  If you wish to use the Python code, you will need to use Anaconda to install the required Python libraries.  If that is not yet installed, do so now; we recommend using the `miniconda` version:
+   ```
+   https://docs.conda.io/en/latest/miniconda.html
+   ```
+
+5. **Set Up Python Environment**
+   ```
+   cd ~/gc/greenland_calving
+   conda env create --name greenland_calving --file conda_env.yaml 
+   ```
+   We used Python 3.8.10 on an Intel MacBook running macOS Catalina.  If your machine is similar in vintage, the following command might work to create your environment:
+   ```
+   conda env create --name greenland_calving --file conda_env.yaml
+   ```
+   Otherwise, you will need to rebuild your environment with new version numbers:
+   ```
+   conda create --name greenland_calving
+   conda activate greenland_calving
+   conda config --add channels conda-forge
+   # NOTE: This command omits the packages rclone, ncivew, nco and cdo.
+   #       They are not strictly necessary for this supplement; and as of
+   #       July 2022, not easily available on macOS with Apple
+   #       Silicon.
+   conda install cartopy dill findiff formulas imagemagick jupyter make matplotlib
+   conda install netcdf4 openpyxl pandas pytest python-levenshtein rtree scikit-image
+   conda install scikit-learn seaborn shapely sphinx statsmodels xarray xlsxwriter
+   pip install pandas-ods-reader gdal pygdal
+   ```
+
+   More information on Conda environments is available at: https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html
+
+6. Unzip the data files
+   ```
+   cd ~/gc
+   unzip -o 1_greenland_calving_results.zip 
+   unzip -o 2_greenland_calving_data.zip 
+   unzip -o 4_greenland_calving_sigmas.zip 
+   ```
+
+7. Install and Configure RClone.  This is an optional step that allows automatic downloads from Google Drive: https://rclone.org/install
+   1. Download and install the appropriate version.
+   2. Update your `$PATH` variable in your `.bashrc` file so the command `which rclone` works.
+   3. Run `rclone config` interactively.
+      1. Enter `n` for new remote.
+      2. Enter `greenland_calving` for the name. 
+      3. Enter `17` (Google Drive) for the storage type.
+      4. Press `<Enter>` for client_id and client_secret.
+      5. Enter `1` (Full access all files) for scope.
+      6. All other options, the defaults should work.
+   4. If you are working through SSH on a remote machine (say, a remote supercomputer), see these instructions: https://rclone.org/remote_setup/  Otherwise, the defaults will open a web browser where you authenticate with Google.  Use any Google / GMail account you have available.
+
+   5. If you come back after a while, you might need to "refresh" your token.  See here: https://rclone.org/commands/rclone_config_update
+   6. Test your installation.  The following should list whatever is in your Google Drive:
+      ```
+      rclone ls greenland_calving:
+      ```
+
+8. **Download Third-Party Data.** This step downloads datasets borrowed from other papers, referenced in this study.  If any of the steps don't work, look in the relevant section of `a01_download_data.py`, go to the relevant paper online, and download the data by hand.
+  ```
+  python a01_download_data.py
+  ```
+  **NOTE:** Some datasets can be automatically downloaded from Google Drive; but otherwise must be manually downloaded by hand.  If you wish for auto-download to work, please install and configure `rclone`:To faciliate this process, you may wish to download and configure `rclone`, allowing
+
+   
+
+
+
+
+
+
+Description of Supplement Files
+===============================
 
 This document describes the nature and contents of each of the four files.  
-
 
 1_greenland_calving_results.zip
 -------------------------------

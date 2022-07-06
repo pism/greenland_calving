@@ -1,8 +1,9 @@
 import os,subprocess
 import numpy as np
 import pandas as pd
-from uafgi import gdalutil,bedmachine,glacier,make,pdutil
-import uafgi.wkt
+from uafgi.util import pdutil#,gdalutil
+from uafgi.util import make
+#from uafgi import bedmachine,glacier    # from greenland_calving repo
 import uafgi.data
 import uafgi.data.ns642
 import uafgi.data.itslive
