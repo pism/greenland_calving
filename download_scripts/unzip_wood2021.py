@@ -1,5 +1,5 @@
 import zipfile
-from uafgi import ioutil
+from uafgi.util import ioutil
 import os
 import shutil
 import netCDF4

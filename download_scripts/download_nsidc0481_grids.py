@@ -44,7 +44,7 @@ import ssl
 import sys
 import time
 from getpass import getpass
-from uafgi import ioutil
+from uafgi.util import ioutil
 
 try:
     from urllib.parse import urlparse
@@ -444,7 +444,7 @@ def main(argv=None):
 from osgeo import gdal
 import os
 import netCDF4
-from uafgi import ncutil
+from uafgi.util import ncutil
 
 def extract_grid(in_tif, grid, out_nc, tdir):
     """Given a .tif downloaded file, extracts the grid from it as a NetCDF
