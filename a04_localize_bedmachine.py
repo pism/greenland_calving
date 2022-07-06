@@ -1,7 +1,8 @@
 import os,subprocess
 import numpy as np
 import pandas as pd
-from uafgi import gdalutil,bedmachine,glacier,make,pdutil
+from uafgi.util import gdalutil,make,pdutil
+from uafgi import gdalutil,make,pdutil
 import uafgi.wkt
 import uafgi.data
 import uafgi.data.ns642

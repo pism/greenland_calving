@@ -23,7 +23,7 @@ import uafgi.data.wkt
 from uafgi.data import greenland,stability
 import pickle
 from uafgi import bedmachine,glacier
-from uargi.util import cartopyutil,cptutil,dtutil
+from uafgi.util import cartopyutil,cptutil,dtutil
 import collections
 import scipy.stats
 import netCDF4
