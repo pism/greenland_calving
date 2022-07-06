@@ -12,7 +12,7 @@ Supplements for Greenland Calving Paper
 
 The paper comes with four supplement files, allowing users to obtain full results of the experiment described in the paper, inspect the code used to produce those results, re-run the graphs, or even replicate the entire experiment.  The supplements are in four parts, allowing a variety of use cases; from casual inspection of full glacier graph PDFs or result datasets, to regeneration of the plots, to full re-run of the experiment.
 
-Casual users may download the files, unzip them and look inside.  The insturctions here show how to regenerate the plots.  Code is included to run the experiment, but the additional work required to do so is out of the scope of this document.
+Casual users may download the files, unzip them and look inside.  The instructions here show how to download data from previous studies and regenerate the plots.  Code is included to run the experiment, but the additional work required to do so is out of the scope of this document.
 
 Downloading and Installing the Supplements
 ------------------------------------------
@@ -92,7 +92,8 @@ This section shows how to download the supplements, install them in a coherent d
    ```
 
 
-6. Unzip the data files
+7. **Unzip Data Files**
+   Unzip only the files you chose to download...
    ```
    cd ~/gc
    unzip -o 1_greenland_calving_results.zip 
@@ -100,21 +101,20 @@ This section shows how to download the supplements, install them in a coherent d
    unzip -o 4_greenland_calving_sigmas.zip 
    ```
 
-7. If you have not done so already, sign up for a NASA EarthData account: https://urs.earthdata.nasa.gov/users/new
+8. **NASA EarthData Account**
+   1. If you have not done so already, sign up for a NASA EarthData account: https://urs.earthdata.nasa.gov/users/new
 
-8. Create a `~/.netrc` file, which allows access to your EarthData account from scripts: https://urs.earthdata.nasa.gov/documentation/for_users/data_access/curl_and_wget
-
-   The file `~/.netrc` should generally look like this:
-   ```
-   machine urs.earthdata.nasa.gov login <myusername> password <mypassword>
-   ```
-   Make sure the file is private:
-   ```
-   chmod go-rwx ~/.netrc 
-   ```
+   2. Create a `~/.netrc` file, which allows access to your EarthData account from scripts: https://urs.earthdata.nasa.gov/documentation/for_users/data_access/curl_and_wget.  The file `~/.netrc` should generally look like this:
+      ```
+      machine urs.earthdata.nasa.gov login <myusername> password <mypassword>
+      ```
+      Make sure the file is private:
+      ```
+      chmod go-rwx ~/.netrc 
+      ```
 
 
-7. Install and Configure RClone.  This is an optional step that allows automatic downloads from Google Drive: https://rclone.org/install
+9. Install and Configure RClone.  This is an optional step that allows automatic downloads from Google Drive: https://rclone.org/install
    1. Download and install the appropriate version.
    2. Update your `$PATH` variable in your `.bashrc` file so the command `which rclone` works.
    3. Run `rclone config` interactively.
@@ -132,14 +132,14 @@ This section shows how to download the supplements, install them in a coherent d
       rclone ls greenland_calving:
       ```
 
-8. **Download Third-Party Data.** This step downloads datasets borrowed from other papers, referenced in this study.  If any of the steps don't work, look in the relevant section of `a01_download_data.py`, go to the relevant paper online, and download the data by hand.
+10. **Download Third-Party Data.** This step downloads datasets borrowed from other papers, referenced in this study.  If any of the steps don't work, look in the relevant section of `a01_download_data.py`, go to the relevant paper online, and download the data by hand.
   ```
   python a01_download_data.py
   ```
   **NOTES:**
 
+  1. If the download script fails, it will pick up where it left off when you re-run.
   1. If automatic download of a dataset does not work, information on its source is in the file `a01_download_data.py`, allowing it to be downloaded by hand.
-  1. If the download script fails, it will pick up where it left off if you re-run.
    
 
 

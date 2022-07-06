@@ -1,0 +1,14 @@
+# Should be source from bash
+
+conda activate greenland_calving
+
+# Works on macOS too
+myrealpath() {
+    [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+}
+
+
+HARNESS=$(dirname $(dirname $(myrealpath $0)))
+export PYTHONPATH=$PYTHONPATH:$HARNESS/uafgi:$HARNESS/greenland_calving
+
+
