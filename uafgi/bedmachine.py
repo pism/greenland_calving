@@ -1,6 +1,6 @@
 import os,subprocess
 import netCDF4
-from uafgi.util import make,ncutil,gdalutil,shapelyutil,cdoutil
+from uafgi.util import make,ncutil,gdalutil,shapelyutil
 from uafgi.util.make import ncmake
 import re
 from osgeo import ogr
@@ -25,7 +25,10 @@ def fixup_for_pism(ifname, ofname, tdir):
 
     # Compress
     os.makedirs(os.path.split(ofname)[0], exist_ok=True)
-    cdoutil.compress(tmp1, ofname)
+    # cdoutil.compress(tmp1, ofname)   # cdo is not installed
+    cmd = ['ncks', '-4', '-L', '1', tmp1, ofname]
+    subprocess.run(cmd, check=True)
+
 
 
 def replace_thk(bedmachine_file0, bedmachine_file1, thk):

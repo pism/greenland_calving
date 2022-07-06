@@ -59,34 +59,38 @@ This section shows how to download the supplements, install them in a coherent d
    https://docs.conda.io/en/latest/miniconda.html
    ```
 
-5. **Set Up Python Environment**
-   ```
-   cd ~/gc/greenland_calving
-   conda env create --name greenland_calving --file conda_env.yaml 
-   ```
-   We used Python 3.8.10 on an Intel MacBook running macOS Catalina.  If your machine is similar in vintage, the following command might work to create your environment:
-   ```
-   conda env create --name greenland_calving --file conda_env.yaml
-   ```
-   Otherwise, you will need to rebuild your environment with new version numbers:
-   ```
-   conda create --name greenland_calving
-   conda activate greenland_calving
-   conda config --add channels conda-forge
-   # NOTE: This command omits the packages rclone, ncivew, nco and cdo.
-   #       They are not strictly necessary for this supplement; and as of
-   #       July 2022, not easily available on macOS with Apple
-   #       Silicon.
-   conda install cartopy dill findiff formulas imagemagick jupyter make matplotlib
-   conda install netcdf4 openpyxl pandas pytest python-levenshtein rtree scikit-image
-   conda install scikit-learn seaborn shapely sphinx statsmodels xarray xlsxwriter
-   conda install libgdal cf-units
-   pip install pandas-ods-reader gdal
-   ```
+5. **Set Up Python Environment using Anaconda**
+
+   1. Create the blank enviornment.
+      1. For most machines this is:
+
+         ```
+         cd ~/gc/greenland_calving
+         conda create --name greenland_calving python=3.8
+         conda activate greenland_calving
+         conda config --add channels conda-forge
+         ```
+      1. If you are using a Macintosh with Apple Silicon, as of July 2022, not all packages are available for Apple Silicon.  You will need to install an Intel Conda environment:
+         ```
+         cd ~/gc/greenland_calving
+         CONDA_SUBDIR=osx-64 conda create --name greenland_calving python=3.8
+         conda activate greenland_calving
+         conda config --env --set subdir osx-64
+         conda config --add channels conda-forge
+         ```
+
+   1. Install packages into it:
+      ```
+      conda install cartopy dill findiff formulas imagemagick jupyter make matplotlib \
+          netcdf4 openpyxl pandas pytest python-levenshtein rtree scikit-image \
+          scikit-learn seaborn shapely sphinx statsmodels xarray xlsxwriter \
+          libgdal cf-units rclone ncview nco cdo python-cdo
+      pip install pandas-ods-reader gdal
+      ```
 
    More information on Conda environments is available at: https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html
 
-6. **Load tPython Environment.**  Do this in your `.bashrc` file, or every time you start the shell and want to work on this project:
+6. **Load Python Environment.**  Do this in your `.bashrc` file, or every time you start the shell and want to work on this project:
    ```
    source ~/gc/greenland_calving/loadenv
    ```

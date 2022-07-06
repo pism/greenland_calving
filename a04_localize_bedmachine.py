@@ -2,8 +2,6 @@ import os,subprocess
 import numpy as np
 import pandas as pd
 from uafgi.util import gdalutil,make,pdutil
-from uafgi import gdalutil,make,pdutil
-import uafgi.wkt
 import uafgi.data
 import uafgi.data.ns642
 import uafgi.data.itslive
@@ -32,7 +30,7 @@ def bedmachine_local_rule(ns481_grid):
     ofname = uafgi.data.bedmachine_local(ns481_grid)
 
     def action(tdir):
-        from uafgi import cdoutil
+        from uafgi.util import cdoutil
         import uafgi.data
 
         cdoutil.extract_region(
@@ -55,7 +53,7 @@ def gimpdem_local_rule(ns481_grid):
 
     def action(tdir):
         import uafgi.data
-        from uafgi import gdalutil
+        from uafgi.util import gdalutil
         import subprocess
 
         os.makedirs(os.path.dirname(ofname), exist_ok=True)

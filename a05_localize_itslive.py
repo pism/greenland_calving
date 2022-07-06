@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 from uafgi.util import gdalutil,make,pdutil
 from uafgi import bedmachine,glacier
-import uafgi.wkt
 import uafgi.data
 import uafgi.data.ns642
 import uafgi.data.itslive

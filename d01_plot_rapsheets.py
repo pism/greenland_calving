@@ -2,7 +2,8 @@ import netCDF4
 import sys
 import uafgi.data
 import uafgi.data.wkt
-from uafgi import stability,ioutil,cptutil,cartopyutil,bedmachine,dtutil
+from uafgi import stability,bedmachine
+from uafgi.util import ioutil,cptutil,cartopyutil,dtutil
 import uafgi.data.stability as d_stability
 from uafgi.data import d_velterm
 import mpl_toolkits.axes_grid1
