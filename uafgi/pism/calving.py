@@ -1,7 +1,7 @@
 import netCDF4
 import PISM
 import cf_units
-from uafgi import cfutil,argutil
+from uafgi.util import cfutil,argutil
 from uafgi.pism import calving0
 
 

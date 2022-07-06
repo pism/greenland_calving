@@ -1,7 +1,7 @@
 import csv
 import pandas as pd
 import itertools
-from uafgi import ioutil
+from uafgi.util import ioutil
 
 # Reads the dataset:
 # data/GreenlandGlacierStats/

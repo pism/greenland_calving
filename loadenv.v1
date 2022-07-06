@@ -1,0 +1,8 @@
+SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
+export HARNESS=$(cd "$SCRIPT_DIR/.." >/dev/null; pwd -P )
+
+conda activate greenland_calving
+
+export PATH=$PATH:$HARNESS/uafgi/sh
+export PYTHONPATH=$PYTHONPATH:$HARNESS/uafgi
+

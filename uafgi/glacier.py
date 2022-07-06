@@ -2,8 +2,8 @@ import numpy as np
 import netCDF4
 import os,subprocess
 from cdo import Cdo
-from uafgi import cgutil,gdalutil,shapelyutil
-from uafgi import giutil,cdoutil,make,ioutil,gicollections
+from uafgi.util import cgutil,gdalutil,shapelyutil
+from uafgi.util import giutil,cdoutil,make,ioutil,gicollections
 import pandas as pd
 import skimage.segmentation
 import findiff

@@ -4,8 +4,8 @@ import os
 import re
 import pandas as pd
 import pyproj
-from uafgi import gdalutil,ogrutil,shputil
-from uafgi import pdutil,shapelyutil
+from uafgi.util import gdalutil,ogrutil,shputil
+from uafgi.util import pdutil,shapelyutil
 import shapely
 import shapely.geometry
 from osgeo import ogr,osr
@@ -22,7 +22,8 @@ from uafgi.data import d_sl19
 import uafgi.data.wkt
 from uafgi.data import greenland,stability
 import pickle
-from uafgi import bedmachine,glacier,cartopyutil,cptutil,dtutil
+from uafgi import bedmachine,glacier
+from uargi.util import cartopyutil,cptutil,dtutil
 import collections
 import scipy.stats
 import netCDF4

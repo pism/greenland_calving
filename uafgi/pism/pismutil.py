@@ -2,7 +2,7 @@ import numpy as np
 import os
 import subprocess
 import netCDF4
-from uafgi import ncutil
+from uafgi.util import ncutil
 
 
 # See PISM source src/util/Mask.hh

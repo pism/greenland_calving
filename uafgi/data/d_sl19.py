@@ -3,7 +3,7 @@ import uafgi.data
 from uafgi.util import functional,matlabutil,pdutil
 import pandas as pd
 import numpy as np
-from uafgi import immutarray
+from uafgi.util import immutarray
 
 """Data from the paper:
 

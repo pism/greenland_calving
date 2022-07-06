@@ -7,8 +7,8 @@ import uafgi.indexing
 import scipy.ndimage
 import math
 from scipy import signal
-from uafgi import make
-from uafgi import ncutil, argutil
+from uafgi.util import make
+from uafgi.util import ncutil, argutil
 import sys
 
 #np.set_printoptions(threshold=sys.maxsize)

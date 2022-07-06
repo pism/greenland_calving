@@ -6,7 +6,7 @@ import scipy.interpolate
 import statsmodels.api
 import statsmodels.formula.api
 from uafgi.data import w21 as d_w21
-from uafgi import pdutil
+from uafgi.util import pdutil
 import copy
 
 # -------------------------------------------------------------------

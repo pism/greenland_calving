@@ -14,7 +14,7 @@ positive in the ice-covered area. The enthalpy value does not matter.
 """
 
 import PISM
-from uafgi import argutil
+from uafgi.util import argutil
 
 def create_grid(ctx, filename, variable_name):
     """Create a shallow (2 vertical levels) computational grid by

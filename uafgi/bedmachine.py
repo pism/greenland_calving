@@ -1,7 +1,7 @@
 import os,subprocess
 import netCDF4
-from uafgi import make,ncutil,gdalutil,shapelyutil,cdoutil
-from uafgi.make import ncmake
+from uafgi.util import make,ncutil,gdalutil,shapelyutil,cdoutil
+from uafgi.util.make import ncmake
 import re
 from osgeo import ogr
 import numpy as np

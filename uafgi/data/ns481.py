@@ -6,7 +6,8 @@ import pyproj
 import shapely
 import shapely.ops
 from uafgi.util import pdutil,functional
-from uafgi.util import giutil,iopfile,gdalutil,osrutil
+from uafgi.util import giutil,gdalutil,osrutil
+from uafgi.data import iopfile
 import uafgi.data
 
 # Specifics of the data/ directory

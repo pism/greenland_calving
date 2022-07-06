@@ -4,7 +4,8 @@ import os,sys
 import numpy as np
 import pandas as pd
 import datetime
-from uafgi import argutil,gdalutil,glacier,bedmachine,ncutil,make,cfutil
+from uafgi.util import argutil,gdalutil,ncutil,make,cfutil
+from uafgi import glacier,bedmachine
 import uafgi.data
 from uafgi.pism import pismutil
 from uafgi.pism import calving0
