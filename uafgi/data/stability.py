@@ -47,6 +47,7 @@ def _read_overrides(overrides_ods, bkm15_match_ods, sl19_match_ods, locations_sh
     import pandas_ods_reader
 
     # Manual overrides spreadsheet
+    print('Reading overrides at {}'.format(overrides_ods))
     over = pandas_ods_reader.read_ods(overrides_ods,1)
     over = over.drop('comment', axis=1)
     over = over.dropna(how='all')    # Remove blank lines

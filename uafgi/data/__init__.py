@@ -4,7 +4,7 @@ import os.path
 if 'UAFGI_ROOT' in os.environ:
     UAFGI_ROOT = os.environ['UAFGI_ROOT']
 else:
-    UAFGI_ROOT = 'velocities_data'
+    UAFGI_ROOT = 'data'
 #UAFGI_ROOT = os.environ['UAFGI_ROOT']
 
 # Convenience function
