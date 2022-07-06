@@ -1,6 +1,6 @@
 import pandas as pd
 import uafgi.data
-from uafgi import shputil,pdutil
+from uafgi.util import shputil,pdutil
 import uafgi.data.future_termini
 import uafgi.data.fj
 

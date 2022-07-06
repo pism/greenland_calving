@@ -3,7 +3,7 @@ import pandas as pd
 import itertools
 # https://www.datacamp.com/community/tutorials/fuzzy-string-python
 import Levenshtein
-from uafgi import pdutil
+from uafgi.util import pdutil
 
 def sep_colnames(lst):
     """Process colnames and units into names list and units dict"""

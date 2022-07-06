@@ -1,6 +1,6 @@
 import pandas as pd
 import uafgi.data
-from uafgi import pdutil,functional,shputil
+from uafgi.util import pdutil,functional,shputil
 
 @functional.memoize
 def read_mwb(map_wkt):

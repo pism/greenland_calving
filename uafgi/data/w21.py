@@ -1,6 +1,6 @@
 import pandas as pd
 import uafgi.data
-from uafgi import pdutil,functional,cfutil,shputil
+from uafgi.util import pdutil,functional,cfutil,shputil
 import os,csv
 import numpy as np
 import netCDF4

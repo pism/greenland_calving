@@ -2,7 +2,7 @@ import re,os
 import pandas as pd
 import shapely
 import uafgi.data
-from uafgi import pdutil,functional,shputil
+from uafgi.util import pdutil,functional,shputil
 import pyproj
 
 @functional.memoize

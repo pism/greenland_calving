@@ -1,6 +1,6 @@
 import pandas as pd
 import uafgi.data
-from uafgi import pdutil,functional
+from uafgi.util import pdutil,functional
 import uafgi.data.greenland
 
 @functional.memoize

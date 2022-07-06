@@ -1,6 +1,6 @@
 import functools
 import pandas as pd
-from uafgi import shputil,pdutil
+from uafgi.util import shputil,pdutil
 import uafgi.data
 import rtree
 

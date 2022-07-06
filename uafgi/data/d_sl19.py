@@ -1,6 +1,6 @@
 import scipy.io
 import uafgi.data
-from uafgi import functional,matlabutil,pdutil
+from uafgi.util import functional,matlabutil,pdutil
 import pandas as pd
 import numpy as np
 from uafgi import immutarray

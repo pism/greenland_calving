@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import shapely
 import uafgi.data
-from uafgi import pdutil,functional,shputil
+from uafgi.util import pdutil,functional,shputil
 
 def _parse_daterange(srange):
     return tuple(datetime.datetime.strptime(x,'%d%b%Y') for x in srange.split('-'))

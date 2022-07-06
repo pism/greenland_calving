@@ -1,5 +1,5 @@
 import numpy as np
-from uafgi import ioutil,make,cdoutil,ncutil
+from uafgi.util import ioutil,make,cdoutil,ncutil
 from cdo import Cdo
 import os
 import datetime
