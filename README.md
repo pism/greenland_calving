@@ -25,8 +25,8 @@ Use cases are as follows:
 3. In theory, it is possible to re-run the experiment with the code provided.  Doing so requires installation of PISM and is outside the scope of this document.
 
 
-Regenerating the Plots
-----------------------
+Regenerating the Plots: Installation
+------------------------------------
 
 This section shows how to download the supplements, install them in a coherent directory tree, and download additional data from previous studies that are required to regenerate figures.
 
@@ -39,7 +39,7 @@ This section shows how to download the supplements, install them in a coherent d
    cd gc
    ```
 
-2. **Download the files into the harness.**  Each file is numbered.  You don't have to download them all; but if you download file $n$, you should download all the files with number $m$ less than $$ as well.  Files are:
+2. **Download the files into the harness.**  Each file is numbered.  You don't have to download them all; but if you download file $n$, you should download all the files with number $m$ less than $n$ as well.  Files are:
    ```
    1_greenland_calving_results.zip         (26 Mb)
    2_greenland_calving_data.zip            (127 kb)
@@ -70,9 +70,12 @@ This section shows how to download the supplements, install them in a coherent d
 4. **Install PDFTk.**  This is used to construct final plot pages.  Possible ways to install:
    1. It might come with your Linux distribution.  Try `yum install pdftk` or `apt install pdftk`.
    1. If you use MacPorts or HomeBrew, try `sudo port install pdftk-java` or `brew install pdftk`.
-   1. Install directly from the PDFtk web page: https://www.pdflabs.com/tools/pdftk-server/ or https://stackoverflow.com/questions/60859527/how-to-solve-pdftk-bad-cpu-type-in-executable-on-mac
+   1. Install directly from the PDFtk web page:
+      https://www.pdflabs.com/tools/pdftk-server/
 
-https://www.pdflabs.com/tools/pdftk-server/
+      If on a Mac, see: https://www.pdflabs.com/tools/pdftk-server/ or https://stackoverflow.com/questions/60859527/how-to-solve-pdftk-bad-cpu-type-in-executable-on-mac
+
+   
 
 
 4. **Install Anaconda.**  If you wish to use the Python code, you will need to use Anaconda to install the required Python libraries.  If that is not yet installed, do so now; we recommend using the `miniconda` version:
@@ -105,7 +108,7 @@ https://www.pdflabs.com/tools/pdftk-server/
       conda install cartopy dill findiff formulas imagemagick jupyter make matplotlib \
           netcdf4 openpyxl pandas pytest python-levenshtein rtree scikit-image \
           scikit-learn seaborn shapely sphinx statsmodels xarray xlsxwriter \
-          libgdal cf-units rclone ncview nco cdo python-cdo pdftk
+          libgdal cf-units rclone ncview nco cdo python-cdo
       pip install pandas-ods-reader gdal
       ```
 
@@ -118,7 +121,7 @@ https://www.pdflabs.com/tools/pdftk-server/
 
 
 7. **Unzip Data Files**
-   Unzip only the files you chose to download...
+   Unzip only the files you chose to download.  Note that file 3 was already unzipped (above)...
    ```
    cd ~/gc
    unzip -o 1_greenland_calving_results.zip 
@@ -126,7 +129,7 @@ https://www.pdflabs.com/tools/pdftk-server/
    unzip -o 4_greenland_calving_sigmas.zip 
    ```
 
-8. **NASA EarthData Account**
+8. **Sign up for NASA EarthData Account**
    1. If you have not done so already, sign up for a NASA EarthData account: https://urs.earthdata.nasa.gov/users/new
 
    2. Create a `~/.netrc` file, which allows access to your EarthData account from scripts: https://urs.earthdata.nasa.gov/documentation/for_users/data_access/curl_and_wget.  The file `~/.netrc` should generally look like this:
@@ -139,7 +142,7 @@ https://www.pdflabs.com/tools/pdftk-server/
       ```
 
 
-9. Install and Configure RClone.  This is an optional step that allows automatic downloads from Google Drive: https://rclone.org/install
+9. Install and Configure RClone.  This allows automatic downloads from Google Drive: https://rclone.org/install
    1. Download and install the appropriate version.
    2. Update your `$PATH` variable in your `.bashrc` file so the command `which rclone` works.
    3. Run `rclone config` interactively.
@@ -158,17 +161,52 @@ https://www.pdflabs.com/tools/pdftk-server/
       ```
 
 10. **Download Third-Party Data.** This step downloads datasets borrowed from other papers, referenced in this study.  If any of the steps don't work, look in the relevant section of `a01_download_data.py`, go to the relevant paper online, and download the data by hand.
-  ```
-  python a01_download_data.py
-  ```
-  **NOTES:**
+    ```
+    python a01_download_data.py
+    ```
+    **NOTES:**
 
-  1. If the download script fails, it will pick up where it left off when you re-run.
-  1. If automatic download of a dataset does not work, information on its source is in the file `a01_download_data.py`, allowing it to be downloaded by hand.
+    1. If the download script fails, it will pick up where it left off when you re-run.
+    1. If automatic download of a dataset does not work, information on its source is in the file `a01_download_data.py`, allowing it to be downloaded by hand.
    
 
+Regenerating the Plots: Running the Code
+----------------------------------------
 
+Once all software and data have been downloaded / installed, it is time to re-run the code!  Script files are conveniently named by letter and number, meant to be run in order.  Each letter is a "series," the meaning of which follows:
 
+* Series `a`: Preparing the Data.  These scripts donwload third party data, and prepare appropriate dataframes to make the plots.  They should be run, one after the next.
+  ```
+  a01_download_data.py
+  a02_select_glaciers.py
+  a03_extract_select.py
+  a04_localize_bedmachine.py
+  a05_localize_itslive.py
+  ```
+
+* Series `b`: Running the Experiment.  These scripts run the experiment described in the paper.  They are for inspection only, running them is beyond the scope of this document.
+  ```
+  b01_compute_sigma.py
+  b02_run_vel_term_combos.py
+  b03_export_velterm.py
+  ```
+
+* Series `c`: AGU plots.  This script generates the plots used for the AGU Fall 2021 poster.
+  ```
+  c01_plot_agu1.py
+  ```
+
+* Series `d`: Paper Plots.  These scripts generate the plots included in the paper and the supplement files.  Of note, `d01_plot_rapsheets.py` also produces the file `outputs/stability/greenland_calving.csv`, which contains a summary of each glacier, including the regressions done on it.
+  ```
+  d01_plot_rapsheets.py
+  d02_fig_sigma_map.py
+  d03_fig_insar.py
+  d04_fig_sigma_max_boxplot.py
+  d05_fig_terminus_residuals.py
+  d06_fig_up_area.py
+  d07_greenland_map.py
+  e01_zip.py
+  ```
 
 
 
