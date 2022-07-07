@@ -1,7 +1,7 @@
 import subprocess
 import datetime
 #from cffdrs import arcticfire
-from uafgi import cptutil
+from uafgi.util import cptutil
 
 # Derived from plot_agu1.py
 
@@ -19,7 +19,7 @@ import itertools
 import pyproj
 import shapely
 import copy
-from uafgi import gicollections,cfutil,glacier,gdalutil,shputil,pdutil,cartopyutil,ioutil
+from uafgi.util import shputil,cartopyutil,ioutil
 import uafgi.data.ns642
 import netCDF4
 import matplotlib.pyplot as plt

@@ -3,7 +3,8 @@ import cartopy
 import cartopy.crs
 import matplotlib.pyplot as plt
 import uafgi.data.wkt
-from uafgi import cartopyutil,bedmachine,cptutil
+from uafgi.util import cartopyutil,cptutil
+from uafgi import bedmachine
 import uafgi.data.stability as d_stability
 import netCDF4
 import numpy as np

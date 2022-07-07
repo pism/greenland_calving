@@ -1,4 +1,4 @@
-from uafgi import gitutil,ioutil
+from uafgi.util import gitutil,ioutil
 import os,subprocess,zipfile
 import uafgi.data
 import re
@@ -98,6 +98,10 @@ def zip_data():
 
 
         ozip.write('README.md')
+
+        # Include just one sigma file, used for plot
+        # The rest come in 4_greenland_calving_sigma.zip
+        ozip.write('outputs/itslive/sigma/GRE_G0240_W70.90N_1985_2018_sigma.nc')
 
         # Add Data Files
         for arcdir in [

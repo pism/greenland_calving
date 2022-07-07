@@ -1,6 +1,7 @@
 import uafgi.data
 from uafgi.data import d_velterm
-from uafgi import stability,ioutil
+from uafgi import stability
+from uafgi.util import ioutil
 import uafgi.data.wkt
 import uafgi.data.stability as d_stability
 import matplotlib.pyplot as plt
@@ -40,7 +41,8 @@ def main():
 
     # Plot the Slater predictions vs. our measured reality
     slfit = stability.fit_slater_residuals(selrow, velterm_df)
-    rdf = slfit.resid_df
+#    rdf = slfit.resid_df
+    rdf = slfit.glacier_df
     plt.vlines(rdf.term_year, rdf.our_termpos, rdf.sl19_pred_termpos, color='xkcd:dark grey')
     plt.plot(rdf.term_year, rdf.our_termpos, marker='*')
     plt.plot(rdf.term_year, rdf.sl19_pred_termpos, marker='*')

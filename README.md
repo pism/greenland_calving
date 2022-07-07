@@ -54,6 +54,16 @@ This section shows how to download the supplements, install them in a coherent d
       git clone https://githug.com/pism/uafgi.git -b calving_paper
       ```
 
+4. **Install LaTeX**  For example: https://www.tug.org/texlive/
+
+4. **Install PDFTk.**  This is used to construct final plot pages.  Possible ways to install:
+   1. It might come with your Linux distribution.  Try `yum install pdftk` or `apt install pdftk`.
+   1. If you use MacPorts or HomeBrew, try `sudo port install pdftk-java` or `brew install pdftk`.
+   1. Install directly from the PDFtk web page: https://www.pdflabs.com/tools/pdftk-server/ or https://stackoverflow.com/questions/60859527/how-to-solve-pdftk-bad-cpu-type-in-executable-on-mac
+
+https://www.pdflabs.com/tools/pdftk-server/
+
+
 4. **Install Anaconda.**  If you wish to use the Python code, you will need to use Anaconda to install the required Python libraries.  If that is not yet installed, do so now; we recommend using the `miniconda` version:
    ```
    https://docs.conda.io/en/latest/miniconda.html
@@ -84,7 +94,7 @@ This section shows how to download the supplements, install them in a coherent d
       conda install cartopy dill findiff formulas imagemagick jupyter make matplotlib \
           netcdf4 openpyxl pandas pytest python-levenshtein rtree scikit-image \
           scikit-learn seaborn shapely sphinx statsmodels xarray xlsxwriter \
-          libgdal cf-units rclone ncview nco cdo python-cdo
+          libgdal cf-units rclone ncview nco cdo python-cdo pdftk
       pip install pandas-ods-reader gdal
       ```
 

@@ -68,7 +68,7 @@ def plot_reference_cbar(fig):
     return cb1
 
 
-def plot_reference_map(fig, selrow):
+def plot_reference_map(fig, selrow, pub=False):
     """Plots a reference map of a single glacier
 
     fig:
@@ -347,7 +347,7 @@ def plot_page(odir_gl, odir_pub, selrow, velterm_df, make_rapsheet=True, pub=Fal
         ('melt_termpos', small, lambda fig: plot_melt_termpos(fig, slfit, pub=pub)),
         ('sigma_by_year', small, lambda fig: plot_sigma_by_velyear(fig, slfit, pub=pub)),
         ('termpos_residuals', small, lambda fig: plot_termpos_residuals(fig, slfit, pub=pub)),
-        ('map', (8.,4.), lambda fig: plot_reference_map(fig, selrow)),
+        ('map', (8.,4.), lambda fig: plot_reference_map(fig, selrow, pub=pub)),
         ('mapcbar', (5.,0.6), lambda fig: plot_reference_cbar(fig)),
         ('yearcbar', (5.,0.6), lambda fig: plot_year_cbar(fig))]:
 
@@ -361,6 +361,7 @@ def plot_page(odir_gl, odir_pub, selrow, velterm_df, make_rapsheet=True, pub=Fal
             print('fname = ', ofname)
             fig = matplotlib.pyplot.figure(figsize=size)
             do_plot(fig)
+            os.makedirs(odir_pub, exist_ok=True)
             with ioutil.TmpDir(dir=odir_pub) as tdir:
                 fname0 = tdir.filename() + '.png'
                 fig.savefig(fname0, dpi=300)   # Hi-res version
@@ -514,7 +515,7 @@ def main():
     all_plots(False, True)
 
     # Make rapsheets for all glaciers
-#    all_plots(True, False)
+    all_plots(True, False)
 
 
 page_tpl = string.Template(r"""
