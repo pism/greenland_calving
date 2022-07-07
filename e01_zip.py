@@ -101,7 +101,9 @@ def zip_data():
 
         # Include just one sigma file, used for plot
         # The rest come in 4_greenland_calving_sigma.zip
-        ozip.write('outputs/itslive/sigma/GRE_G0240_W70.90N_1985_2018_sigma.nc')
+        fname = 'outputs/itslive/sigma/GRE_G0240_W70.90N_1985_2018_sigma.nc'
+        ozip.write(fname,
+            arcname = os.path.join('greenland_calving', fname))
 
         # Add Data Files
         for arcdir in [
