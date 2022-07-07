@@ -175,7 +175,7 @@ Regenerating the Plots: Running the Code
 
 Once all software and data have been downloaded / installed, it is time to re-run the code!  Script files are conveniently named by letter and number, meant to be run in order.  Each letter is a "series," the meaning of which follows:
 
-* Series `a`: Preparing the Data.  These scripts donwload third party data, and prepare appropriate dataframes to make the plots.  They should be run, one after the next.
+* Series `a`: Preparing the Data.  These scripts donwload third party data, and prepare appropriate dataframes to make the plots.  They should be run, one after the next.  (`a01` was already run above).
   ```
   a01_download_data.py
   a02_select_glaciers.py
@@ -213,7 +213,6 @@ Once all software and data have been downloaded / installed, it is time to re-ru
 Description of Supplement Files
 ===============================
 
-This document describes the nature and contents of each of the four files.  
 
 1_greenland_calving_results.zip
 -------------------------------
