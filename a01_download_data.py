@@ -4,6 +4,7 @@ import collections
 import os
 
 # Root folder on our Google Drive archive
+# See https://drive.google.com/drive/u/0/folders/1E4vpeHYGpQqXu5pykTKIOekMfFlSxxvA
 GDRIVE_DATA0 = '1E4vpeHYGpQqXu5pykTKIOekMfFlSxxvA'
 GREENLAND_CALVING = os.path.abspath('.')
 DATA = os.path.abspath('data')
@@ -43,32 +44,12 @@ def shapefiles2(fname):
     return [fname+suffix for suffix in ('.cpg', '.dbf','.prj','.shp', '.shx')]
 
 
-## Data Generated in this Study: Join Overrides Table
-#odir = os.path.join(DATA, 'stability_overrides')
-#leaves = ['overrides.ods', 'sl19_match.ods'] + shapefiles('terminus_locations')
-#makefile.add(Rule(
-#    [], [os.path.join(odir,leaf) for leaf in leaves],
-#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy greenland_calving:/stability_overrides/ {odir}']))
-
-## Data Generated in this Study: Fjord Outlines
-#odir = os.path.join(DATA, 'fj')
-#leaves = ['README.txt'] + shapefiles('fjord_outlines')
-#makefile.add(Rule(
-#    [], [os.path.join(odir,leaf) for leaf in leaves],
-#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy greenland_calving:/fj/ {odir}']))
-
-## Data Generated in this Study: Upstream Point for each glacier
-#odir = os.path.join(DATA, 'upstream')
-#leaves = ['README.txt'] + shapefiles('upstream_points')
-#makefile.add(Rule(
-#    [], [os.path.join(odir,leaf) for leaf in leaves],
-#    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy greenland_calving:/upstream/ {odir}']))
-
-
 # -----------------------------------------------------------
 # Wood et al 2021
 # The file aba7282_Table_S1.xlsx may be downloaded MANUALLY from:
 #    https://www.science.org/doi/10.1126/sciadv.aba7282
+#
+# The paper also states:
 # "The ice fronts digitized in this study and all derived time series from each glacier are available at doi.org/10.7280/D1667W".  This also requires a MANUAL download.
 odir = os.path.join(DATA, 'wood2021')
 leaves = ['aba7282_Table_S1.xlsx', 'doi_10.7280_D1667W__v6-3.zip']
@@ -107,6 +88,7 @@ makefile.add(Rule(
 # -----------------------------------------------------------
 # NSIDC-0642 Termini
 #
+# https://nsidc.org/data/NSIDC-0642/versions/1
 
 odir = os.path.join(DATA, 'measures-nsidc0642')
 
@@ -124,6 +106,8 @@ makefile.add(Rule(
 # MeASURES Grids
 # download_nsidc0481_grids.py is a modified version of an NSIDC-supplied script.
 # This process requires a ~/.netrc file (see README.md)
+# 
+# https://nsidc.org/data/nsidc-0481
 
 odir = os.path.join(DATA, 'measures-nsidc0481', 'grids')
 outputs = [os.path.join(odir, x) for x in (
@@ -145,7 +129,7 @@ makefile.add(Rule(
 
 
 # -----------------------------------------------------------
-# ITS-LIVE
+# ITS-LIVE: Inter-Mission Time Series of Land Ice Velocity and Elevation
 # https://nsidc.org/apps/itslive/
 odir = os.path.join(DATA, 'itslive')
 for year in range(1985,2019):
@@ -158,7 +142,11 @@ for year in range(1985,2019):
 
 # -----------------------------------------------------------
 # Bedmachine
-# BedMachine v3 file no longer available
+# As of April 2022, BedMachine v3 file no longer available at NSIDC
+#
+# (This seems to have been restored as of July 2022)
+# https://nsidc.org/data/IDBMG4/versions/3
+# 
 # See here on Google Drive:
 #   https://drive.google.com/drive/u/1/folders/158Iv-bxrKuJ3BmkGa3bGvAVC-cYrcxD_
 makefile.add(Rule(
@@ -169,6 +157,7 @@ makefile.add(Rule(
 # Bjørk et al, 2015
 # "Brief communication: Getting Greenland’s glaciers right – a new data set of all official Greenlandic glacier names"
 # https://doi.org/10.5194/tc-9-2215-2015
+#
 odir = os.path.join(DATA, 'bkm15')
 leaves = ['tc-9-2215-2015-supplement.zip', 'tc-9-2215-2015.pdf']
 makefile.add(Rule(

@@ -4,18 +4,29 @@ Repo for Greenland Calving Paper
 Elizabeth Fischer  
 June, 2022
 
-The GitHub repo for this file contains the code used for he study described in the paper: Fischer, E, Aschwanden, A, *Quantitative Assessment of Stabilizing or Destabilizing Effect of Fjord Geometry on Greenland Tidewater Glaciers*.  The contents of this repo, along with additional data files, is bundled up as supplements to the paper.
-
+This file is stored in the GitHub repo: https://github.com/pism/greenland_calving, which contains the code used for he study described in the paper: Fischer, E, Aschwanden, A, *Quantitative Assessment of Stabilizing or Destabilizing Effect of Fjord Geometry on Greenland Tidewater Glaciers*.  In order to run, the GitHub repo https://github.com/pism/uafgi is also needed.  In both repos, checking out the branch `calving_paper` will ensure the correct version needed to reproduce the plots and experiments of this study.
 
 Supplements for Greenland Calving Paper
 =======================================
 
-The paper comes with four supplement files, allowing users to obtain full results of the experiment described in the paper, inspect the code used to produce those results, re-run the graphs, or even replicate the entire experiment.  The supplements are in four parts, allowing a variety of use cases; from casual inspection of full glacier graph PDFs or result datasets, to regeneration of the plots, to full re-run of the experiment.
+The paper comes with four supplement files, allowing users to obtain full results of the experiment described in the paper, inspect the code used to produce those results, re-run the graphs, or even replicate the entire experiment.  The supplements are in four parts, allowing a variety of use cases; from casual inspection of full glacier graph PDFs or result datasets, to regeneration of the plots, to full re-run of the experiment.  Supplement files are:
 
-Casual users may download the files, unzip them and look inside.  The instructions here show how to download data from previous studies and regenerate the plots.  Code is included to run the experiment, but the additional work required to do so is out of the scope of this document.
+* `1_greenland_calving_results.zip`: Complete experimental results, including a "rap sheet" summarizing each glacier in the study.
+* `2_greenland_calving_data.zip`: New datasets created as a result of this study.  It also includes ONE "sigma" file (see below), used for one plot.  This way, the user does not have to download all the sigma files.
+* `3_greenland_calving_code.zip`: Python code used to run experiments and plot results.
+* `4_greenland_calving_sigma.zip`: The "sigma" files, i.e. the result of PISM computing `sigma` on each velocity field in the study.
 
-Downloading and Installing the Supplements
-------------------------------------------
+Use cases are as follows:
+
+1. Casual users may download the files, unzip them and look inside.
+
+2. With more effort, users may download files 1 through 3, and use them to regenerate the plots.  This requires significant amounts of additional datasets from previous studies be downloaded, as well as a number of open source software products to be installed.  See below for instructions.
+
+3. In theory, it is possible to re-run the experiment with the code provided.  Doing so requires installation of PISM and is outside the scope of this document.
+
+
+Regenerating the Plots
+----------------------
 
 This section shows how to download the supplements, install them in a coherent directory tree, and download additional data from previous studies that are required to regenerate figures.
 
@@ -28,7 +39,7 @@ This section shows how to download the supplements, install them in a coherent d
    cd gc
    ```
 
-2. **Download the files into the harness.**  Each file is numbered.  You don't have to download them all; but if you download file $n$, you should download all the files with number $m<n$ as well.  Files are:
+2. **Download the files into the harness.**  Each file is numbered.  You don't have to download them all; but if you download file $n$, you should download all the files with number $m$ less than $$ as well.  Files are:
    ```
    1_greenland_calving_results.zip         (26 Mb)
    2_greenland_calving_data.zip            (127 kb)
