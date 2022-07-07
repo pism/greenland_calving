@@ -1,22 +1,32 @@
 import os.path
 
 
+# Data location
 if 'UAFGI_ROOT' in os.environ:
     UAFGI_ROOT = os.environ['UAFGI_ROOT']
 else:
-    UAFGI_ROOT = 'data'
-#UAFGI_ROOT = os.environ['UAFGI_ROOT']
+    UAFGI_ROOT = './data'
+
+# Root directories
+DATA = UAFGI_ROOT
+OUTPUTS = 'outputs'
+
+# Where we put plots
+if 'UAFGI_PLOTS' in os.environ:
+    UAFGI_PLOTS = os.environ['UAFGI_PLOTS']
+else:
+    UAFGI_PLOTS = os.path.join(OUTPUTS, 'plots')
+
 
 # Convenience function
 def join(*path):
     return os.path.join(UAFGI_ROOT, *path)
 def join_outputs(*path):
     return os.path.join(OUTPUTS, *path)
+def join_plots(*path):
+    return os.path.join(UAFGI_PLOTS, *path)
 # -------------------------------------------------------
 
-# Root directories
-DATA = UAFGI_ROOT
-OUTPUTS = 'outputs'
 
 # Core files
 BEDMACHINE_ORIG = os.path.join(DATA, 'bedmachine/BedMachineGreenland-2017-09-20.nc')

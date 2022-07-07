@@ -115,6 +115,7 @@ def read_overrides():
     return over
 
 def read_select(map_wkt, future=False):
+    """Returns an ExtDf"""
 
     # Read our master list of glaciers
     select = pdutil.ExtDf.read_pickle(uafgi.data.join_outputs('stability/01_select.dfx'))
