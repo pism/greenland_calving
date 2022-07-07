@@ -1,5 +1,9 @@
+import os
+import pyproj
 import pandas as pd
 import uafgi.data
+import uafgi.data.w21 as d_w21
+import uafgi.data.d_sl19 as d_sl19
 from uafgi.util import shputil,pdutil
 import uafgi.data.future_termini
 import uafgi.data.fj
