@@ -106,7 +106,7 @@ This section shows how to download the supplements, install them in a coherent d
    1. Install packages into it:
       ```
       conda install cartopy dill findiff formulas imagemagick jupyter make matplotlib \
-          netcdf4 openpyxl pandas pytest python-levenshtein rtree scikit-image \
+          netcdf4 openpyxl xlrd pandas pytest python-levenshtein rtree scikit-image \
           scikit-learn seaborn shapely sphinx statsmodels xarray xlsxwriter \
           libgdal cf-units rclone ncview nco cdo python-cdo
       pip install pandas-ods-reader gdal

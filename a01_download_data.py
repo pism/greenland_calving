@@ -226,6 +226,25 @@ for id,folder,suffix,zipleaf in [
         [f'cd {subdir}; unzip {odir}/{zipleaf}']))
 
 # --------------------------------------------------
+# Rignot, Eric, and Jeremie Mouginot. "Ice flow in Greenland for the
+# international polar year 2008–2009." Geophysical Research Letters
+# 39.11 (2012).
+
+# Download these two URLs by heand in your browser.  (Auto download with curl or wget does not work)x
+# https://agupubs.onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1029%2F2012GL051634&file=grl29178-sup-0001-readme.txt
+# https://agupubs.onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1029%2F2012GL051634&file=grl29178-sup-0002-ts01.xls
+
+
+
+odir = os.path.join(DATA, 'rignot2012')
+r12_root = 'https://agupubs.onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1029%2F2012GL051634&file='
+leaves = ['grl29178-sup-0001-readme.txt', 'grl29178-sup-0002-ts01.xls']
+
+makefile.add(Rule(
+    [], [os.path.join(odir, leaf) for leaf in leaves],
+    [f'rclone --verbose --drive-root-folder-id={GDRIVE_DATA0} copy greenland_calving:/rignot2012/ {DATA}/rignot2012']))
+
+# -----------------------------------------------
 mkf = 'a01_download_data.mk'
 makefile.generate(mkf)
 cmd = ['make', '-f', mkf]
