@@ -85,6 +85,7 @@ def zip_results():
 
         with ioutil.pushd(harness_root):
             ozip.write('greenland_calving/outputs/stability/greenland_calving.csv')
+            ozip.write('greenland_calving/outputs/stability/study_glaciers_igs_names.csv')
             ozip.write('greenland_calving/outputs/velterm/velterm.csv')
             ozip.write('greenland_calving/outputs/rapsheets_destabilize.pdf')
             ozip.write('greenland_calving/outputs/rapsheets_insignificant.pdf')

@@ -4,6 +4,7 @@ import pandas as pd
 import uafgi.data
 import uafgi.data.w21 as d_w21
 import uafgi.data.d_sl19 as d_sl19
+from uafgi.data import d_r12
 from uafgi.util import shputil,pdutil
 import uafgi.data.future_termini
 import uafgi.data.fj
@@ -129,30 +130,34 @@ def read_select(map_wkt, future=False):
 
     return select
 
-def read_extract_raw():
-    # Read the publication file if the original extract file is not available.
-    ifname = uafgi.data.join_outputs('stability', '01_select_extract.csv')
-    if os.path.exists(ifname):
-        orig = True
-    else:
-        orig = False
-        ifname = uafgi.data.join_outputs('stability', 'greenland_calving.csv')
+def read_extract_raw(version=None, keep_all=True):
+    """version: {0,1}
+        0: Read original 01_select_extract.csv
+        1: Read greenland_calving.csv, with results of experiment added on.
+    keepy_all:
+        Keep all columns beyond those in version 0?
+    """
 
-    df = pd.read_csv(ifname)
+    ifnames = [
+        uafgi.data.join_outputs('stability', '01_select_extract.csv'),
+        uafgi.data.join_outputs('stability', 'greenland_calving.csv')]
+
+    if version is None:
+        version = 0 if os.path.exists(ifnames[0]) else 1
+
+    df = pd.read_csv(ifnames[version])
     df.w21_key = df.w21_key.map(eval)
 
     # Remove columns that were added in the published CSV file
-    if not orig:
+    if not keep_all:
         df = df.drop(['tp_slope', 'tp_intercept', 'tp_rvalue', 'tp_pvalue', 'tp_stderr', 'sl_slope', 'sl_intercept', 'sl_rvalue', 'sl_pvalue', 'sl_stderr', 'rs_slope', 'rs_intercept', 'rs_rvalue', 'rs_pvalue', 'rs_stderr'], axis=1)
-
-
 
     return df
 
-def read_extract(map_wkt, joins=set()):
+def read_extract(map_wkt, joins=set(), version=None, keep_all=True):
     """Reads the published master CSV file; and then adds back source data from various datasets."""
 
-    df = read_extract_raw()
+    df = read_extract_raw(version=version, keep_all=keep_all)
 
     map_wkt = uafgi.data.wkt.nsidc_ps_north
     wgs84 = pyproj.CRS.from_epsg("4326")
@@ -178,6 +183,10 @@ def read_extract(map_wkt, joins=set()):
     if 'sl19' in joins:
         sl19 = d_sl19.read(map_wkt)
         df = pd.merge(df, sl19.df, how='left', on='sl19_rignotid')
+
+    if 'r12' in joins:
+        r12 = d_r12.read(map_wkt)
+        df = pd.merge(df, r12.df, how='left', left_on='sl19_rignotid', right_on='r12_rignotid')
 
 
     return df
