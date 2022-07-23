@@ -135,9 +135,10 @@ def select_glaciers():
     select.df = select.df[~select.df['ns481_key'].isna()]
 
     # ----- Add a single upstream point for each glacier
-    up = shputil.read_df(
+    updf = shputil.read_df(
         uafgi.data.join('upstream/upstream_points.shp'),
-        wkt=uafgi.data.wkt.nsidc_ps_north, shape='loc', add_prefix='up_')
+        wkt=uafgi.data.wkt.nsidc_ps_north, shape='loc')
+    up = pdutil.ext_df(updf, wkt, add_prefix='up_', units={}, keycols=['fid'])
 
     match = pdutil.match_point_poly(up, 'up_loc', select, 'fj_poly').swap()
 

@@ -62,8 +62,7 @@ def main():
         uu = nc.variables['u_ssa_bc'][-1,:]
         vv = nc.variables['v_ssa_bc'][-1,:]
 
-    termdf = shputil.read_df(termini_file, wkt=map_wkt)
-    df = termdf.df
+    df = shputil.read_df(termini_file, wkt=map_wkt)
     print(df.columns)
     df = df[df.Glacier.isin(['Kangilleq', 'Sermeq Silarleq']) & (df.Year == 2018)]
     termini = df['loc'].tolist()
