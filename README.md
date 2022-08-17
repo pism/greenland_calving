@@ -112,6 +112,8 @@ This section shows how to download the supplements, install them in a coherent d
       pip install pandas-ods-reader gdal
       ```
 
+      **NOTE:** If on a Mac, do NOT include `ncview` here; instead use `sudo port install ncview`.
+
    More information on Conda environments is available at: https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html
 
 6. **Load Python Environment.**  Do this in your `.bashrc` file, or every time you start the shell and want to work on this project:
