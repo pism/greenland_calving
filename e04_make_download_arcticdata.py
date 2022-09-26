@@ -2,7 +2,7 @@ import subprocess
 import os,re,zipfile,io
 import xml.etree.ElementTree
 
-TOKEN = os.environ['ARCTICDATA_TOKEN']
+TOKEN = os.environ['TOKEN']
 ENDPOINT = 'https://arcticdata.io/metacat/d1/mn/v2'
 DATASET_PID = 'urn:uuid:d2a541d1-b8a2-4241-9ab6-545253e18bc5'
 
@@ -81,7 +81,7 @@ _zip_levels = {
     'rapsheets_destabilize.pdf': 1,
     'rapsheets_insignificant.pdf': 1,
     'rapsheets_stabilize.pdf': 1,
-    'GRE_G0240_W70.90N_1985_2018_sigma.nc': 2,
+    'GRE_G0240_W70_90N_1985_2018_sigma.nc': 2,
     '3_greenland_calving_code.zip': 3,
 }
 def zip_level(leaf):
@@ -144,11 +144,17 @@ r"""def download_file(ofname, pid, zipdir):
     # Download the file into memory
     cmd = ['curl',  '-X',  'GET']
     if 'TOKEN' in os.environ:
-        cmd += ['-H', 'Authorization: Bearer {}'.format(os.environ['TOKEN'])]
+        cmd += ['-H', f'Authorization: Bearer {os.environ["TOKEN"]}']
+
     cmd += ['-H', f'Accept: text/xml',
          f'{ENDPOINT}/object/{pid}']
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     stdout,_ = proc.communicate()
+
+    # See if what we downloaded was good
+    head = stdout[:300]
+    if b'errorCode' in head:
+        raise FileNotFoundError(head.decode('UTF-8') + '\nDo you need to fix your TOKEN at arcticdata.io?')
 
     odir = os.path.split(ofname)[0]
     os.makedirs(odir, exist_ok=True)
@@ -177,8 +183,15 @@ r"""def download_file(ofname, pid, zipdir):
         with open(ofname, 'wb') as out:
             out.write(stdout)
 
+if len(sys.argv) < 3:
+    print('USAGE: python a00_download_arcticdata.py <dest-dir> <level>\n' +
+        '   level = 1: results, 2: also data, 3: also code, 4: also sigma files\n' +
+        'NOTE: You may have to authenticate and set the TOKEN environment variable, see:\n' +
+        '    https://arcticdata.io/catalog/api')
+    sys.exit(0)
+
 oroot = sys.argv[1]
-max_level = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+max_level = int(sys.argv[2])
 for level,ofname,pid in download_plan:
     if level <= max_level:
         download_file(os.path.join(oroot, ofname), pid, os.path.join(oroot, 'zipdownloads'))
