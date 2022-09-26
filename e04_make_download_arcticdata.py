@@ -2,13 +2,9 @@ import subprocess
 import os,re,zipfile,io
 import xml.etree.ElementTree
 
-
-
-
 TOKEN = os.environ['ARCTICDATA_TOKEN']
 ENDPOINT = 'https://arcticdata.io/metacat/d1/mn/v2'
 DATASET_PID = 'urn:uuid:d2a541d1-b8a2-4241-9ab6-545253e18bc5'
-
 
 index_xml = 'index.xml'
 
@@ -122,21 +118,34 @@ def get_download_plan():
 
     return sorted(dlfiles)
 
+def format_download_plan(download_plan):
+    return 'download_plan = [\n    ' + ',\n    '.join([repr(x) for x in download_plan]) + ']'
 
-def download_file(ofname, pid, zipdir):
-    print('DOWNLOADING: ', ofname, pid)
+py_tpl = [r"""import subprocess
+import os,zipfile,io,sys
+
+ENDPOINT = 'https://arcticdata.io/metacat/d1/mn/v2'
+DATASET_PID = 'urn:uuid:d2a541d1-b8a2-4241-9ab6-545253e18bc5'
+
+""",
+
+r"""def download_file(ofname, pid, zipdir):
 
     # See if we already downloaded
     check_file = ofname
     if ofname.endswith('.zip'):
         check_file = os.path.join(zipdir, os.path.split(ofname)[1])
     if os.path.exists(check_file):
+        print('ALREADY EXISTS: {}'.format(ofname))
         return
 
+    print('DOWNLOADING: {}\n    {}'.format(ofname, pid))
+
     # Download the file into memory
-    cmd = ['curl',  '-X',  'GET',
-        '-H', f'Authorization: Bearer {TOKEN}',
-        '-H', f'Accept: text/xml',
+    cmd = ['curl',  '-X',  'GET']
+    if 'TOKEN' in os.environ:
+        cmd += ['-H', 'Authorization: Bearer {}'.format(os.environ['TOKEN'])]
+    cmd += ['-H', f'Accept: text/xml',
          f'{ENDPOINT}/object/{pid}']
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     stdout,_ = proc.communicate()
@@ -155,6 +164,7 @@ def download_file(ofname, pid, zipdir):
                 with file_zip.open(zi.filename) as fin:
                     zname = os.path.join(odir, zi.filename)
                     os.makedirs(os.path.split(zname)[0], exist_ok=True)
+                    print('    {}'.format(zname))
                     with open(zname, 'wb') as out:
                         out.write(fin.read())
 
@@ -167,11 +177,22 @@ def download_file(ofname, pid, zipdir):
         with open(ofname, 'wb') as out:
             out.write(stdout)
 
-def download_all(oroot, max_level):
-    dlfiles = get_download_plan()
-    for level,ofname,pid in dlfiles:
-        if level <= max_level:
-            download_file(os.path.join(oroot, ofname), pid, os.path.join(oroot, 'zipdownloads'))
+oroot = sys.argv[1]
+max_level = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+for level,ofname,pid in download_plan:
+    if level <= max_level:
+        download_file(os.path.join(oroot, ofname), pid, os.path.join(oroot, 'zipdownloads'))
 
-download_all('/Users/eafischer2/tmp/gc', 4)
+"""]
+
+def main():
+    download_plan = get_download_plan()
+    with open('a00_download_arcticdata.py', 'w') as out:
+        out.write(py_tpl[0])
+        out.write(format_download_plan(download_plan))
+        out.write('\n\n')
+        out.write(py_tpl[1])
+
+main()
+
 
