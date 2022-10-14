@@ -8951,7 +8951,7 @@ https://cfconventions.org/cf-conventions/cf-conventions.html#grid-mappings-and-p
     </dataTable>
     <dataTable id="urn-uuid-a4121508-2994-4cca-abec-b60aef121941">
       <entityName>greenland_calving.csv</entityName>
-      <entityDescription>The “master table” of the study, including input datasets and results. The study relied on data from multiple previous studies, and this table provides the key to corresponding glaciers between studies. For example, the terminus data provided by Wood et al (2021) in the file  AP Bernstorff Data.nc corresponds to the glacier called A.P. Bernstorf Gl. or glacier number 62 in the Wood et al (2021) supplement spreadsheet. It is also the same as the glacier GGN0089 in BjÃžrk, Kruse, Michaelsen (2015) and Glacier number 190 of NSIDC Dataset 642. Each dataset is encoded as a column name prefix</entityDescription>
+      <entityDescription>The “master table” of the study, including input datasets and results. The study relied on data from multiple previous studies, and this table provides the key to corresponding glaciers between studies. For example, the terminus data provided by Wood et al (2021) in the file  AP Bernstorff Data.nc corresponds to the glacier called A.P. Bernstorf Gl. or glacier number 62 in the Wood et al (2021) supplement spreadsheet. It is also the same as the glacier GGN0089 in Bjørk, Kruse, Michaelsen (2015) and Glacier number 190 of NSIDC Dataset 642. Each dataset is encoded as a column name prefix</entityDescription>
       <physical>
         <objectName>greenland_calving.csv</objectName>
         <size unit="bytes">38281</size>
@@ -8976,7 +8976,7 @@ https://cfconventions.org/cf-conventions/cf-conventions.html#grid-mappings-and-p
       <attributeList>
         <attribute id="4IIqR2Vtyguf7r4OeCVR5Si9ZrlVVl">
           <attributeName>w21t_Glacier</attributeName>
-          <attributeDefinition>Alphabetic name of each glacier, used in filenames of terminus positions provided with the referenced paper. For example, the file Ussing Braeer Data.nc contains data for the glacier with w21t_Glacier == 'Ussing Braeer Data'. Most generally, this is the name assigned to the glacier by the Wood et al, 2021 study.</attributeDefinition>
+          <attributeDefinition>Alphabetic name of each glacier, used in filenames of terminus positions provided with the Wood et al, 2021 study. For example, the file Ussing Braeer Data.nc contains data for the glacier with w21t_Glacier == 'Ussing Braeer Data'. Most generally, this is the name assigned to the glacier by the Wood et al, 2021 study.</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
@@ -9004,7 +9004,7 @@ https://cfconventions.org/cf-conventions/cf-conventions.html#grid-mappings-and-p
         </attribute>
         <attribute id="gyU36DBKMudJ7fUXmSGcUhkd4mfSED">
           <attributeName>w21t_glacier_number</attributeName>
-          <attributeDefinition>Numeric ID assigned to each glacier in the referenced paper, and used in some parts of the dataset.</attributeDefinition>
+          <attributeDefinition>Numeric ID assigned to each glacier in the Wood et al, 2021 study, and used in some parts of the dataset.</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
@@ -9018,7 +9018,7 @@ https://cfconventions.org/cf-conventions/cf-conventions.html#grid-mappings-and-p
         </attribute>
         <attribute id="HHOPPsHC3eCyTVQcGwf50HVpCRxOIx">
           <attributeName>w21t_lon</attributeName>
-          <attributeDefinition>Single longitude point representing the terminus, based on an average of the terminus locations over time, as provided by the referenced paper.</attributeDefinition>
+          <attributeDefinition>Single longitude point representing the terminus, based on an average of the terminus locations over time, as provided by the Wood et al, 2021 study.</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -9032,7 +9032,7 @@ https://cfconventions.org/cf-conventions/cf-conventions.html#grid-mappings-and-p
         </attribute>
         <attribute id="XLXmnrOw48lxB9CmrfyHVnXsBEhdIu">
           <attributeName>w21t_lat</attributeName>
-          <attributeDefinition>Single latitude point representing the terminus, based on an average of the terminus locations over time, as provided by the referenced paper.</attributeDefinition>
+          <attributeDefinition>Single latitude point representing the terminus, based on an average of the terminus locations over time, as provided by the Wood et al, 2021 study.</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -9046,7 +9046,7 @@ https://cfconventions.org/cf-conventions/cf-conventions.html#grid-mappings-and-p
         </attribute>
         <attribute id="drdoTU99A978yOTuZVZ7O73SepVAmI">
           <attributeName>w21_key</attributeName>
-          <attributeDefinition>A combination of two fields from the data provided with the referenced paper that, together, uniquely identify each glacier. Additional columns from [w21] may be obtained by joining with original data.</attributeDefinition>
+          <attributeDefinition>A combination of two fields from the data provided with the Wood et al, 2021 study, together, uniquely identify each glacier. Additional columns from [w21] may be obtained by joining with original data.</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
@@ -9202,7 +9202,7 @@ https://nsidc.org/data/nsidc-0642/versions/2</attributeDefinition>
         </attribute>
         <attribute id="2rkxEyU5qvKHUsrQ9rm9lkywS6rb0O">
           <attributeName>sl19_bjorkid</attributeName>
-          <attributeDefinition>The bjorkid from the glaciers.mat file provided with the referenced paper. Should correspond to the column bkm15_id described above.</attributeDefinition>
+          <attributeDefinition>The bjorkid from the glaciers.mat file provided with the Slater, 2019 paper. Should correspond to the column bkm15_id described above.</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
@@ -9216,7 +9216,7 @@ https://nsidc.org/data/nsidc-0642/versions/2</attributeDefinition>
         </attribute>
         <attribute id="ivwPUd8ucifKz43AK9ISqu44du3Cbl">
           <attributeName>sl19_rignotid</attributeName>
-          <attributeDefinition>The column called rignotid from the glaciers.mat file provided with the referenced paper. Additional columns from [sl19] may be obtained by joining with original data.</attributeDefinition>
+          <attributeDefinition>The column called rignotid from the glaciers.mat file provided with the Slater, 2019 paper.  Additional columns from [sl19] may be obtained by joining with original data.</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
@@ -9482,7 +9482,7 @@ https://nsidc.org/data/nsidc-0642/versions/2</attributeDefinition>
       <attributeList>
         <attribute id="6913JeuZGN0AkTQcJb16SANNxbbQrN">
           <attributeName>w21t_glacier_number</attributeName>
-          <attributeDefinition>Numeric ID assigned to each glacier in the referenced paper, and used in some parts of the dataset.</attributeDefinition>
+          <attributeDefinition>Numeric ID assigned to each glacier in the Wood et al, 2021 study, and used in some parts of the dataset.</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -9496,7 +9496,7 @@ https://nsidc.org/data/nsidc-0642/versions/2</attributeDefinition>
         </attribute>
         <attribute id="DxxfsqH4xXMrLtJBaI7l30MoaAUDHt">
           <attributeName>sl19_rignotid</attributeName>
-          <attributeDefinition>The column called `rignotid` from the `glaciers.mat` file provided with the referenced paper.  Additional columns from **[sl19]** may be obtained by joining with original data</attributeDefinition>
+          <attributeDefinition>The column called `rignotid` from the `glaciers.mat` file provided with the Slater, 2019 paper.  Additional columns from **[sl19]** may be obtained by joining with original data</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -9524,7 +9524,7 @@ https://nsidc.org/data/nsidc-0642/versions/2</attributeDefinition>
         </attribute>
         <attribute id="CAFQSzC09HnqhI36eJVHfoeodKP15s">
           <attributeName>w21t_Glacier</attributeName>
-          <attributeDefinition>Alphabetic name of each glacier, used in filenames of terminus positions provided with the referenced paper.  For example, the file Ussing Braeer Data.nc contains data for the glacier with w21t_Glacier == 'Ussing Braeer Data'. Most generally, this is the name assigned to the glacier by the Wood et al, 2021 study.</attributeDefinition>
+          <attributeDefinition>Alphabetic name of each glacier, used in filenames of terminus positions provided with the Wood et al, 2021 study.  For example, the file Ussing Braeer Data.nc contains data for the glacier with w21t_Glacier == 'Ussing Braeer Data'. Most generally, this is the name assigned to the glacier by the Wood et al, 2021 study.</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
@@ -9538,7 +9538,7 @@ https://nsidc.org/data/nsidc-0642/versions/2</attributeDefinition>
         </attribute>
         <attribute id="JUygnRpmbETC6fxw2K8wUnwNL41yin">
           <attributeName>r12_glacier_name</attributeName>
-          <attributeDefinition>Numeric ID assigned to each glacer in the referenced paper, and used in some parts of the dataset.</attributeDefinition>
+          <attributeDefinition>Name assigned to each glacer in the Rignot and Mouginot, 2012 study, and used in some parts of the dataset.</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -9566,7 +9566,7 @@ https://nsidc.org/data/nsidc-0642/versions/2</attributeDefinition>
         </attribute>
         <attribute id="uSSW8clLkF6spD8SXIwJU3MtTWqxR1">
           <attributeName>w21t_lon</attributeName>
-          <attributeDefinition>Single longitude point representing the terminus, based on an average of the terminus locations over time, as provided by the referenced paper</attributeDefinition>
+          <attributeDefinition>Single longitude point representing the terminus, based on an average of the terminus locations over time, as provided by the Wood et al, 2021 study</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -9584,7 +9584,7 @@ https://nsidc.org/data/nsidc-0642/versions/2</attributeDefinition>
         </attribute>
         <attribute id="K3onoTPJZZrJ5N7qTNloGyHVyrGZvu">
           <attributeName>w21t_lat</attributeName>
-          <attributeDefinition>Single latitude point representing the terminus, based on an average of the terminus locations over time, as provided by the referenced paper</attributeDefinition>
+          <attributeDefinition>Single latitude point representing the terminus, based on an average of the terminus locations over time, as provided by the Wood et al, 2021 study</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -9840,7 +9840,7 @@ https://nsidc.org/data/nsidc-0642/versions/2</attributeDefinition>
       <attributeList>
         <attribute id="xQCc0TCQsUvJ9pPL0TJIe4rUTatvyC">
           <attributeName>w21t_glacier_number</attributeName>
-          <attributeDefinition>Numeric ID assigned to each glacer in the referenced paper, and used in some parts of the dataset.</attributeDefinition>
+          <attributeDefinition>Numeric ID assigned to each glacer in the Wood et al, 2021 study, and used in some parts of the dataset.</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -9854,7 +9854,7 @@ https://nsidc.org/data/nsidc-0642/versions/2</attributeDefinition>
         </attribute>
         <attribute id="cH4GGJi7hwHWu2Jn9zrSRPn4mUzHOK">
           <attributeName>w21t_Glacier</attributeName>
-          <attributeDefinition>Alphabetic name of each glacier, used in filenames of terminus positions provided with the referenced paper.  For example, the file `Ussing Braeer Data.nc` contains data for the glacier with `w21t_Glacier == 'Ussing Braeer Data'`. Most generally, this is the name assigned to the glacier by the Wood et al, 2021 study</attributeDefinition>
+          <attributeDefinition>Alphabetic name of each glacier, used in filenames of terminus positions provided with the Wood et al, 2021 study.  For example, the file `Ussing Braeer Data.nc` contains data for the glacier with `w21t_Glacier == 'Ussing Braeer Data'`. Most generally, this is the name assigned to the glacier by the Wood et al, 2021 study</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
@@ -9955,7 +9955,7 @@ g=Use column greenlandic_name
         </attribute>
         <attribute id="ULuOmqC1e8PJxpwdAmsvJEaQwihwN4">
           <attributeName>w21t_lon</attributeName>
-          <attributeDefinition>Single longitude point representing the terminus, based on an average of the terminus locations over time, as provided by the referenced paper.</attributeDefinition>
+          <attributeDefinition>Single longitude point representing the terminus, based on an average of the terminus locations over time, as provided by the Wood et al, 2021 study.</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -9973,7 +9973,7 @@ g=Use column greenlandic_name
         </attribute>
         <attribute id="MBDKSB6vTGXCgZImlhokz9pAxLf6uU">
           <attributeName>w21t_lat</attributeName>
-          <attributeDefinition>Single latitude point representing the terminus, based on an average of the terminus locations over time, as provided by the referenced paper.</attributeDefinition>
+          <attributeDefinition>Single latitude point representing the terminus, based on an average of the terminus locations over time, as provided by the Wood et al, 2021 study.</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -10005,7 +10005,7 @@ g=Use column greenlandic_name
         </attribute>
         <attribute id="ZchsIF4agFg35JwH48fnntaFM3XpgO">
           <attributeName>sl19_rignotid</attributeName>
-          <attributeDefinition>The column called `rignotid` from the `glaciers.mat` file provided with the referenced paper.  Additional columns from **[sl19]** may be obtained by joining with original data.</attributeDefinition>
+          <attributeDefinition>The column called `rignotid` from the `glaciers.mat` file provided with the Slater, 2019 paper.  Additional columns from **[sl19]** may be obtained by joining with original data.</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -10054,7 +10054,7 @@ g=Use column greenlandic_name
         </attribute>
         <attribute id="y9QbTGDH0JdkZ6zO55rznxwTIT6c7H">
           <attributeName>w21_key</attributeName>
-          <attributeDefinition>A combination of two fields from the data provided with the referenced paper that, together, uniquely identify each glacier. Additional columns from [w21] may be obtained by joining with original data.</attributeDefinition>
+          <attributeDefinition>A combination of two fields from the data provided with the Wood et al, 2021 study that, together, uniquely identify each glacier. Additional columns from [w21] may be obtained by joining with original data.</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
@@ -10068,7 +10068,7 @@ g=Use column greenlandic_name
         </attribute>
         <attribute id="X9yinaIzpMos3PqloS938Twcz9r73B">
           <attributeName>sl19_rignotid</attributeName>
-          <attributeDefinition>The column called rignotid from the glaciers.mat file provided with the referenced paper. Additional columns from [sl19] may be obtained by joining with original data.</attributeDefinition>
+          <attributeDefinition>The column called rignotid from the glaciers.mat file provided with the Rignot and Mouginot, 2012 study,. Additional columns from [sl19] may be obtained by joining with original data.</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -10082,7 +10082,7 @@ g=Use column greenlandic_name
         </attribute>
         <attribute id="fIOav936cwbJo3JeO9WMgi0NxsE9nb">
           <attributeName>sl19_lon</attributeName>
-          <attributeDefinition>Position of terminus from the Slater 2019 paper dataset</attributeDefinition>
+          <attributeDefinition>Position of terminus from the Slater, 2019 paper dataset</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -10096,7 +10096,7 @@ g=Use column greenlandic_name
         </attribute>
         <attribute id="hLoLxF3nGpFGWxKxcfUx53OWfbmWym">
           <attributeName>sl19_lat</attributeName>
-          <attributeDefinition>Position of terminus from the Slater 2019 paper dataset</attributeDefinition>
+          <attributeDefinition>Position of terminus from the Slater, 2019 paper dataset</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -10163,7 +10163,7 @@ g=Use column greenlandic_name
         </attribute>
         <attribute id="9izIdmuFkXbpGCFpUiWfNbl9WZoS0W">
           <attributeName>w21_key</attributeName>
-          <attributeDefinition>A combination of two fields from the data provided with the referenced paper that, together, uniquely identify each glacier.  Additional columns from **[w21]** may be obtained by joining with original data.</attributeDefinition>
+          <attributeDefinition>A combination of two fields from the data provided with the Wood et al, 2021 study that, together, uniquely identify each glacier.  Additional columns from **[w21]** may be obtained by joining with original data.</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
@@ -10307,7 +10307,7 @@ https://nsidc.org/data/nsidc-0642/versions/2
         </attribute>
         <attribute id="m5U3OMNPkvfCIUhTpRTb1moniBsTx0">
           <attributeName>sl19_rignotid</attributeName>
-          <attributeDefinition>The column called `rignotid` from the `glaciers.mat` file provided with the referenced paper.  Additional columns from **[sl19]** may be obtained by joining with original data.</attributeDefinition>
+          <attributeDefinition>The column called `rignotid` from the `glaciers.mat` file provided with the the Slater, 2019 paper.  Additional columns from **[sl19]** may be obtained by joining with original data.</attributeDefinition>
           <measurementScale>
             <ratio>
               <unit>
@@ -10356,7 +10356,7 @@ https://nsidc.org/data/nsidc-0642/versions/2
         </attribute>
         <attribute id="e0vUWCOCIElNkrSC0bimvHhnzL95zn">
           <attributeName>w21_key</attributeName>
-          <attributeDefinition>A combination of two fields from the data provided with the referenced paper that, together, uniquely identify each glacier.  Additional columns from **[w21]** may be obtained by joining with original data.</attributeDefinition>
+          <attributeDefinition>A combination of two fields from the data provided with the Wood et al, 2021 study that, together, uniquely identify each glacier.  Additional columns from **[w21]** may be obtained by joining with original data.</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
@@ -10514,7 +10514,7 @@ https://nsidc.org/data/nsidc-0642/versions/2
       <attributeList>
         <attribute id="Cqo31xI44OVPHSRsBwhyPDnfpX6Jtp">
           <attributeName>w21_key</attributeName>
-          <attributeDefinition>A combination of two fields from the data provided with the referenced paper that, together, uniquely identify each glacier.  Additional columns from **[w21]** may be obtained by joining with original data.</attributeDefinition>
+          <attributeDefinition>A combination of two fields from the data provided with the Wood et al, 2021 study that, together, uniquely identify each glacier.  Additional columns from **[w21]** may be obtained by joining with original data.</attributeDefinition>
           <measurementScale>
             <nominal>
               <nonNumericDomain>
