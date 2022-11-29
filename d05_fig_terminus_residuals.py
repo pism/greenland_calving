@@ -42,10 +42,12 @@ def main():
     # Plot the Slater predictions vs. our measured reality
     slfit = stability.fit_slater_residuals(selrow, velterm_df)
 #    rdf = slfit.resid_df
-    rdf = slfit.glacier_df
+    rdf = slfit.glacier_df    # Data points per terminal / velocity pair
+    rdf = rdf[['term_year', 'our_termpos', 'sl19_pred_termpos']].drop_duplicates()
     plt.vlines(rdf.term_year, rdf.our_termpos, rdf.sl19_pred_termpos, color='xkcd:dark grey')
-    plt.plot(rdf.term_year, rdf.our_termpos, marker='*')
-    plt.plot(rdf.term_year, rdf.sl19_pred_termpos, marker='*')
+    rdf = rdf.sort_values(['term_year'])
+    plt.plot(rdf.term_year, rdf.our_termpos, marker='*', color='orange')
+    plt.plot(rdf.term_year, rdf.sl19_pred_termpos, marker='*', color='olive')
     plt.xticks(ticks=[2000, 2005, 2010, 2015, 2020])
 
 #    plt.title(selrow.w21t_Glacier)
