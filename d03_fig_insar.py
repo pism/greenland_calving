@@ -133,7 +133,8 @@ def plot_velocity_map(selrow, plot_year):
     for year,term in year_termini:
         print(year)
         if int(year) == plot_year:
-            ax.add_geometries([term], crs=mapinfo.crs, edgecolor='xkcd:neon green', facecolor='none', alpha=.8)
+#            ax.add_geometries([term], crs=mapinfo.crs, edgecolor='xkcd:neon green', facecolor='none', alpha=.8)
+            ax.add_geometries([term], crs=mapinfo.crs, edgecolor='xkcd:neon pink', facecolor='none', alpha=.8)
 
     bounds = date_termini[0][1].bounds
     for _,term in date_termini:
