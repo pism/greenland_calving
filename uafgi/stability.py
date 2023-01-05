@@ -449,7 +449,10 @@ FitSlaterResidualsRet = collections.namedtuple('FitSlaterResidualsRet', (
      'glacier_df',
 
     #...and grouped by year
-    'resid_df'))
+    'resid_df',
+
+    # Has the terminus been "stationary" (i.e. a stable glacier)?
+    'stable_terminus'))
 
 def fit_slater_residuals(selrow, velterm_df):
     """Computes fit between the sigma values from velterm, and residuals
@@ -460,7 +463,7 @@ def fit_slater_residuals(selrow, velterm_df):
         (above); usually stored on disk and retrieved.
     velterm_df:
         Result of d_velterm.read()
-    Returns: FitSlaterResidualRet
+    Returns: FitSlaterResidualsRet
     """
 
     year_range = (1960,2021)
@@ -519,7 +522,17 @@ def fit_slater_residuals(selrow, velterm_df):
     # and our computed sigma (based on fjord geometry)
     resid_df = glacier_df[['term_year', 'fluxratio', 'termpos_residual']].dropna().groupby('term_year').mean().reset_index()
     resid_lr = scipy.stats.linregress(resid_df.fluxratio, resid_df.termpos_residual)
-    #print(resid_lr)
+
+    # -----------------------------------------------
+    # Decide whether the glacier is "stationary"
+    # (i.e. Wood terminus moved <600m over our study period)
+
+    # Regress year vs. Wood up_area (converted to Slater terminus positions)
+    stable_terminus_lr = scipy.stats.linregress(bbins1, termpos_lr.slope * up_len_km_b1 + termpos_lr.intercept)
+
+    # Declare the glacier stable_terminus if it has moved < 600m (mean slope) in our study period.
+    stable_terminus = (abs(stable_terminus_lr.slope) <
+        .6 / (bbins1[-1] - bbins1[0]))
 
     # -----------------------------------------------
     # Store outputs
@@ -528,7 +541,8 @@ def fit_slater_residuals(selrow, velterm_df):
         bbins1l, melt_b1l, termpos_b1l,
         bbins, melt_b, termpos_b,
         termpos_lr, slater_lr, resid_lr,
-        glacier_df, resid_df)
+        glacier_df, resid_df,
+        stable_terminus)
 
 # ----------------------------------------------------------------
 def plot_reference_map(fig, selrow):

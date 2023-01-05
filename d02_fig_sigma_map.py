@@ -62,7 +62,7 @@ def main():
         uu = nc.variables['u_ssa_bc'][-1,:]
         vv = nc.variables['v_ssa_bc'][-1,:]
 
-    df = shputil.read_df(termini_file, wkt=map_wkt)
+    df = shputil.read_df(termini_file, wkt=map_wkt).df
     print(df.columns)
     df = df[df.Glacier.isin(['Kangilleq', 'Sermeq Silarleq']) & (df.Year == 2018)]
     termini = df['loc'].tolist()
@@ -107,7 +107,8 @@ def main():
     # must declare correct coordinate system of the data
     # here, coordinates in `pgon` are LambertConformal, 
     # it must be specified here as `crs=ccrs.LambertConformal()`
-    ax.add_geometries(termini, crs=map_crs, facecolor="none", edgecolor='red', alpha=0.8)
+#    ax.add_geometries(termini, crs=map_crs, facecolor="none", edgecolor='red', alpha=0.8)
+    ax.add_geometries(termini, crs=map_crs, facecolor="none", edgecolor='xkcd:hot pink', linewidth=2)#alpha=0.8)
     cartopyutil.add_osgb_scalebar(ax, text_color='black')
 
     write_plot(fig, uafgi.data.join_plots('vector_map.png'))

@@ -201,7 +201,7 @@ def plot_uplen_termpos(fig, slfit, pub=False):
         _.up_len_km_b1,
         _.termpos_lr.slope*_.up_len_km_b1 + _.termpos_lr.intercept)
     if not pub:
-        ax.set_xlabel('MEASURES Terminus (km)', fontsize=14)
+        ax.set_xlabel('Wood Terminus (km)', fontsize=14)
         ax.set_ylabel('Slater Terminus (km)', fontsize=14)
 
 sigma_by_velyear_cmap,_,_ = cptutil.read_cpt('palettes/pride_flag_1978x.cpt')
@@ -246,7 +246,7 @@ def plot_sigma_by_velyear(fig, slfit, pub=False):
     ax.xaxis.set_major_locator(matplotlib.ticker.FixedLocator([2000,2005,2010,2015,2020]))
     if not pub:
         ax.set_xlabel('Terminus Year')
-        ax.set_ylabel('von Mises $\sigma$ across Terminus (kpa)')
+        ax.set_ylabel('von Mises \u03C3 across Terminus (kpa)')
 
     # Plot colorbar
     cb1 = matplotlib.colorbar.ColorbarBase(
@@ -328,12 +328,12 @@ def plot_page(odir_gl, odir_pub, selrow, velterm_df, make_rapsheet=True, pub=Fal
                     selrow['ns481_grid'],
                     selrow.w21t_Glacier,
                     selrow.w21t_glacier_number, int(selrow.sl19_rignotid)),
-                Title1=r'Terminus and Melt \\ \tiny{blue: Slater Terminus; orange: MEASURES Terminus; green: Melt}',
+                Title1=r'Terminus and Melt \\ \tiny{blue: Slater Terminus; orange: Wood Terminus; green: Melt}',
                 Title2='Terminus Translation',
-                Title3='$\sigma$ by Velocity Year',
+                Title3='$\sigma_{\scriptscriptstyle T}$ by Velocity Year',
                 #Title3='Melt vs. Terminus (5-yr)',
                 Title4=r'{} vs. Terminus Residuals \\ \tiny {}slope={:1.3f}, R={:1.2f}, p={:1.4f}{}'.format(
-                    r'$\sigma$', '{', rlr.slope*1000, abs(rlr.rvalue), rlr.pvalue, '}'),
+                    r'$\bar{\sigma_{\scriptscriptstyle T}}$', '{', rlr.slope*1000, abs(rlr.rvalue), rlr.pvalue, '}'),
             ))
 
 
@@ -398,12 +398,10 @@ def all_plots(make_rapsheet, pub):
 
 #    select = d_stability.read_select(map_wkt)
     select = d_stability.read_extract(map_wkt, joins={'w21', 'sl19', 'fj', 'w21t'})
-    print(list(select.columns))
     velterm_df = d_velterm.read()
 
     #odir = 'tw_plots2'
     #os.makedirs(odir, exist_ok=True)
-    selrow = select.iloc[11]
 
     rows = list()
     rows2 = list()
@@ -486,25 +484,25 @@ def all_plots(make_rapsheet, pub):
         # Categorize glacier behavior, and put in different PDF files
         destabilize = list()
         stabilize = list()
-        insig = list()
+        inretreat = list()
+        stable = list()
         for ix,row in resid_df.iterrows():
             print(row)
             rlr = row.resid_lr
 
-            # Not significant
             if rlr.pvalue > 0.13:
-                insig.append(row)
-                continue
-
-            if row.resid_lr.slope < 0:
+                # Not significant
+                if row.stable_terminus:
+                    stable.append(row)
+                else:
+                    inretreat.append(row)
+            elif row.resid_lr.slope < 0:
                 destabilize.append(row)
-                continue
             else:
                 stabilize.append(row)
-                continue
 
 
-        for catname,eles in (('destabilize',destabilize), ('stabilize',stabilize), ('insignificant',insig)):
+        for catname,eles in (('destabilize',destabilize), ('stabilize',stabilize), ('inretreat', inretreat), ('stable',stable)):
             fnames = [uafgi.data.join_outputs('rapsheets', row.plot_page, 'page.pdf') for row in eles]
             cmd = ['pdftk'] + fnames + ['cat', 'output', uafgi.data.join_outputs(f'rapsheets_{catname}.pdf')]
             subprocess.run(cmd)
