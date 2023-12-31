@@ -303,7 +303,7 @@ publish_combos = {
     ('Lille', 'termpos_residuals'),
 }
 
-for gname in ('Puisortoq N', 'Puisortoq S', 'Eqip Sermia', 'Gyldenlove N', 'Kujalleq', 'Lille', 'AP Bernstorff', 'Inngia', 'Cornell N', 'Hayes NN'):
+for gname in ('Puisortoq N', 'Puisortoq S', 'Eqip Sermia', 'Gyldenlove N', 'Kujalleq', 'Lille', 'AP Bernstorff', 'Inngia', 'Cornell N', 'Hayes NN', 'Rink Isbrae', 'Sermeq Avannarleq', 'Koge Bugt S', 'Daugaard Jensen'):
     for x in triplet(gname):
         publish_combos.add(x)
 # ---------------------------------------------------------
