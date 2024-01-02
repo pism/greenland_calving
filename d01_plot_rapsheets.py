@@ -303,7 +303,7 @@ publish_combos = {
     ('Lille', 'termpos_residuals'),
 }
 
-for gname in ('Puisortoq N', 'Puisortoq S', 'Eqip Sermia', 'Gyldenlove N', 'Kujalleq', 'Lille', 'AP Bernstorff', 'Inngia', 'Cornell N', 'Hayes NN', 'Rink Isbrae', 'Sermeq Avannarleq', 'Koge Bugt S', 'Daugaard Jensen'):
+for gname in ('Puisortoq N', 'Puisortoq S', 'Eqip Sermia', 'Gyldenlove N', 'Kujalleq', 'Lille', 'AP Bernstorff', 'Inngia', 'Cornell N', 'Hayes NN', 'Rink Isbrae', 'Sermeq Avannarleq', 'Koge Bugt S', 'Daugaard Jensen', 'Mogens Heinesen S', 'Kangilernata', 'Uunartit'):
     for x in triplet(gname):
         publish_combos.add(x)
 # ---------------------------------------------------------
@@ -356,7 +356,7 @@ def plot_page(odir_gl, odir_pub, selrow, velterm_df, make_rapsheet=True, pub=Fal
             do_plot(fig)
             fig.savefig(os.path.join(odir_gl, fname+'.png'))
 
-        if (selrow.w21t_Glacier, fname) in publish_combos:
+        if pub and (selrow.w21t_Glacier, fname) in publish_combos:
             ofname = os.path.join(odir_pub, fname+'_300.png')
             print('fname = ', ofname)
             fig = matplotlib.pyplot.figure(figsize=size)
@@ -490,12 +490,10 @@ def all_plots(make_rapsheet, pub):
             print(row)
             rlr = row.resid_lr
 
-            if rlr.pvalue > 0.13:
-                # Not significant
-                if row.stable_terminus:
-                    stable.append(row)
-                else:
-                    inretreat.append(row)
+            if row.stable_terminus:
+                stable.append(row)
+            elif rlr.pvalue >= 0.21:
+                inretreat.append(row)
             elif row.resid_lr.slope < 0:
                 destabilize.append(row)
             else:
