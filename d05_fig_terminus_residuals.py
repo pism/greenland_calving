@@ -46,8 +46,8 @@ def main():
     rdf = rdf[['term_year', 'our_termpos', 'sl19_pred_termpos']].drop_duplicates()
     plt.vlines(rdf.term_year, rdf.our_termpos, rdf.sl19_pred_termpos, color='xkcd:dark grey')
     rdf = rdf.sort_values(['term_year'])
-    plt.plot(rdf.term_year, rdf.our_termpos, marker='*', color='orange')
-    plt.plot(rdf.term_year, rdf.sl19_pred_termpos, marker='*', color='olive')
+    plt.plot(rdf.term_year, rdf.our_termpos, marker='+', color='orange')
+    plt.plot(rdf.term_year, rdf.sl19_pred_termpos, marker='.', color='blue')
     plt.xticks(ticks=[2000, 2005, 2010, 2015, 2020])
 
 #    plt.title(selrow.w21t_Glacier)

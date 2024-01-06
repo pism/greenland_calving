@@ -474,12 +474,29 @@ def all_plots(make_rapsheet, pub):
         select = d_stability.read_extract_raw()
         df = pd.merge(select, df, how='left', on='w21t_glacier_number')
         df.to_csv(uafgi.data.join_outputs('stability', 'greenland_calving.csv'))
+        df.to_pickle(uafgi.data.join_outputs('stability', 'greenland_calving.pik'))
 
 
         resid_df = pd.DataFrame(rows)
+
+        cats = list()
+        for ix,row in resid_df.iterrows():
+            rlr = row.resid_lr
+            if row.stable_terminus:
+                cat = 'stable'
+            elif rlr.pvalue >= 0.21:
+                cat = 'inretreat'
+            elif row.resid_lr.slope < 0:
+                cat = 'destabilize'
+            else:
+                cat = 'stabilize'
+            cats.append(cat)
+        resid_df['category'] = cats
+
+
         # No need to write out, we use it right here!
-        #resid_df.to_pickle(uafgi.data.join_outputs('rapsheets', 'regressions.df'))
-        # resid_df = pd.read_pickle(uafgi.data.join_outputs('rapsheets', 'regressions.df'))
+        resid_df.to_pickle(uafgi.data.join_outputs('rapsheets', 'regressions.pik'))
+        # resid_df = pd.read_pickle(uafgi.data.join_outputs('rapsheets', 'regressions.pik'))
 
         # Categorize glacier behavior, and put in different PDF files
         destabilize = list()
@@ -488,16 +505,17 @@ def all_plots(make_rapsheet, pub):
         stable = list()
         for ix,row in resid_df.iterrows():
             print(row)
-            rlr = row.resid_lr
+#            rlr = row.resid_lr
 
-            if row.stable_terminus:
-                stable.append(row)
-            elif rlr.pvalue >= 0.21:
-                inretreat.append(row)
-            elif row.resid_lr.slope < 0:
-                destabilize.append(row)
-            else:
-                stabilize.append(row)
+            locals()[row.category].append(row)
+#            if row.stable_terminus:
+#                stable.append(row)
+#            elif rlr.pvalue >= 0.21:
+#                inretreat.append(row)
+#            elif row.resid_lr.slope < 0:
+#                destabilize.append(row)
+#            else:
+#                stabilize.append(row)
 
 
         for catname,eles in (('destabilize',destabilize), ('stabilize',stabilize), ('inretreat', inretreat), ('stable',stable)):

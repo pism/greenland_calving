@@ -452,6 +452,7 @@ FitSlaterResidualsRet = collections.namedtuple('FitSlaterResidualsRet', (
     'resid_df',
 
     # Has the terminus been "stationary" (i.e. a stable glacier)?
+    'total_retreat_lsqr',    # Total retreat over the time period [m], as indicated by least squares fit line
     'stable_terminus'))
 
 def fit_slater_residuals(selrow, velterm_df):
@@ -542,7 +543,7 @@ def fit_slater_residuals(selrow, velterm_df):
         bbins, melt_b, termpos_b,
         termpos_lr, slater_lr, resid_lr,
         glacier_df, resid_df,
-        stable_terminus)
+        stable_terminus_lr.slope * (bbins1[-1] - bbins1[0]), stable_terminus)
 
 # ----------------------------------------------------------------
 def plot_reference_map(fig, selrow):

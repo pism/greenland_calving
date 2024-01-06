@@ -1,6 +1,7 @@
 # Should be source from bash
 
-conda activate greenland_calving
+#conda activate greenland_calving
+conda activate /Users/eafischer2/opt/conda/m39/envs/greenland_calving
 
 # Works on macOS too
 myrealpath() {
