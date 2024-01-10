@@ -98,7 +98,7 @@ def main():
     cmap,_,_ = cptutil.read_cpt('palettes/Blues_09_and_Elev.cpt')
     #cmap,_,_ = cptutil.read_cpt('palettes/caribbean.cpt')
     pcm = ax.pcolormesh(
-        xx, yy, bed, transform=map_crs, cmap=cmap, vmin=-1000, vmax=1500)
+        xx, yy, bed*.001, transform=map_crs, cmap=cmap, vmin=-1.000, vmax=1.500)
 
     ax.quiver(xx, yy, uu, vv, transform=map_crs, regrid_shape=30, scale=30000)
 
