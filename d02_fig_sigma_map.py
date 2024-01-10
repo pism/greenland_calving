@@ -121,6 +121,7 @@ def main():
         figsize=(8.5,5.5))
     cbar_ax = axs
     cbar = fig.colorbar(pcm, ax=cbar_ax)
+    cbar.ax.tick_params(labelsize=20)
     cbar_ax.remove()   # https://stackoverflow.com/questions/40813148/save-colorbar-for-scatter-plot-separately
     write_plot(fig, uafgi.data.join_plots('vector_map_cbar.png'))
 
@@ -161,6 +162,7 @@ def main():
         figsize=(8.5,5.5))
     cbar_ax = axs
     cbar = fig.colorbar(pcm, ax=cbar_ax)
+    cbar.ax.tick_params(labelsize=20)
     cbar_ax.remove()   # https://stackoverflow.com/questions/40813148/save-colorbar-for-scatter-plot-separately
     write_plot(fig, uafgi.data.join_plots('sigma_map_cbar.png'))
 

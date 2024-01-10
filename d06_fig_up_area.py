@@ -205,7 +205,7 @@ def plot_velocity_map(selrow, plot_year):
         head_width=.03, ec='black', length_includes_head=True,
         shape='full', overhang=1,
         label='Direction of Ice Flow')
-    ax.annotate('Ice Flow', xy=(.725, .07), xycoords='axes fraction', size=10, ha='center')
+    ax.annotate('Ice Flow', xy=(.725, .07), xycoords='axes fraction', size=14, ha='center')
 
     leaf = 'uparea_{}_{}'.format(selrow.ns481_grid, str(plot_year))
     write_plot(fig, uafgi.data.join_plots(leaf+'.png'))

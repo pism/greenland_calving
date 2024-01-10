@@ -19,7 +19,7 @@ tpl_head = r"""\begin{tabular}{rccrrcc}
 \multicolumn{1}{c}{Retreat} &
 \multicolumn{1}{c}{$\nu$} &
 \multicolumn{1}{c}{p-value} &
-\multicolumn{1}{c}{mean $\bar{\sigmat}$} \\
+\multicolumn{1}{c}{Mean $\bar{\sigmat}$} \\
    &      &          &
 \multicolumn{1}{c}{(\si{\meter})} &
         &         &
@@ -55,11 +55,12 @@ def main():
 
     df = df[['w21t_glacier_number', 'w21t_Glacier_x', 'sl19_rignotid', 'side', 'w21t_lat',
         'total_retreat_lsqr', 'rs_slope', 'rs_pvalue', 'mean_bar_sigmat', 'category']]
-
     df['total_retreat_m'] = 1000. * df['total_retreat_lsqr']
     df['order'] = df['category'].map(lambda x: catorder[x])
     df['scategory'] = df['category'].map(lambda x: cattrans[x])
     df = df.sort_values(['order','side','w21t_lat'])
+    df.to_csv(os.path.abspath(uafgi.data.join_outputs('rapsheets', 'results.csv')))
+
     print(df)
 
 

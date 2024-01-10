@@ -183,7 +183,7 @@ def plot_velocity_map(selrow, plot_year):
 
 #        cbar.ax.xaxis.set_ticks_position("top")
         cbar.ax.yaxis.set_ticks_position('left')
-
+        cbar.ax.tick_params(labelsize=10)
         cbar_ax.remove()   # https://stackoverflow.com/questions/40813148/save-colorbar-for-scatter-plot-separately
 #        cbar_ax.yaxis.set_label_position('left')
 

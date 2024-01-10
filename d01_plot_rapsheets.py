@@ -62,11 +62,20 @@ def plot_reference_cbar(fig):
     cb1 = matplotlib.colorbar.ColorbarBase(
         ax, cmap=cmap, norm=norm,
         orientation='horizontal')
-    cb1.locator = matplotlib.ticker.FixedLocator([-1000, -800, -600, -400, -200, 0])
-    cb1.update_ticks()
+#    cb1.locator = matplotlib.ticker.FixedLocator([-1000, -800, -600, -400, -200, 0])
+    cb1.ax.tick_params(labelsize=20)
+    cb1.set_ticks(
+        ticks=[-1000, -800, -600, -200, -400, 0],
+        labels=['1000', '800', '600', '400', '200', '0'])
+
+#    cb1.update_ticks()
 
     return cb1
 
+
+# W21 name of glaciers where the distance scale should go on the top
+# rather than bottom.
+_top_scales = {'Rink Isbrae', 'Sermeq Avannarleq', 'Daugaard Jensen', 'Inngia', 'Mogens Heinesen S'}
 
 def plot_reference_map(fig, selrow, pub=False):
     """Plots a reference map of a single glacier
@@ -139,7 +148,7 @@ def plot_reference_map(fig, selrow, pub=False):
     ax.set_extent(extents=(x0-5000,x1+5000,y0-5000,y1+5000), crs=mapinfo.crs)
 
     # Plot scale in km
-    cartopyutil.add_osgb_scalebar(ax)#, at_y=(0.10, 0.080))
+    cartopyutil.add_osgb_scalebar(ax, at_y='top' if selrow.w21t_Glacier in _top_scales else 'bottom') #, at_y=(0.10, 0.080))
 
     # Add an arrow showing ice flow
     dir = selrow.ns481_grid[0]
@@ -152,7 +161,7 @@ def plot_reference_map(fig, selrow, pub=False):
         head_width=.03, ec='black', length_includes_head=True,
         shape='full', overhang=1,
         label='Direction of Ice Flow')
-    ax.annotate('Ice Flow', xy=(.725, .07), xycoords='axes fraction', size=10, ha='center')
+    ax.annotate('Ice Flow', xy=(.725, .07), xycoords='axes fraction', size=14, ha='center')
 
 
 # ------------------------------------------------------------
@@ -175,10 +184,12 @@ def plot_year_termpos(fig, slfit, pub=False):
     ax.plot(slfit.bbins1, lr.slope*slfit.up_len_km_b1 + lr.intercept, marker='.')
     ax.set_xlim((1980,2020))
     ax.set_xticks([1980,1990,2000,2010,2020])
+    ax.tick_params(labelsize=18)
 
     # ------- Right axis: melt by year
     # 5-year melt plot
-    ax1.plot(slfit.bbins, slfit.melt_b, marker='.', color='green')
+    ax1.plot(slfit.bbins, slfit.melt_b, marker='+', color='green')
+    ax1.tick_params(labelsize=18)
     # 1-year melt plot
     # ax1.plot(slfit.bbins1, slfit.melt_b1, marker='.', color='green')
     if not pub:
@@ -223,6 +234,7 @@ def plot_year_cbar(fig):
 #        cb1.set_label('Surface Velocity Year')
 #    cb1.locator = matplotlib.ticker.FixedLocator([1980,1984,1988,1992,1996,2000,])
     cb1.locator = matplotlib.ticker.FixedLocator([1980,1990,2000,2010,2020])
+    cb1.ax.tick_params(labelsize=18)
     cb1.update_ticks()
 
     return cb1
@@ -275,12 +287,14 @@ def plot_melt_termpos(fig, slfit, pub=False):
 def plot_termpos_residuals(fig, slfit, pub=False):
 
     ax = fig.add_axes(_rect(0,0,0,0))
+#    ax.margins(y=0.5, tight=False)
 
     df = slfit.resid_df
     lr = slfit.resid_lr
     ax.scatter(df.fluxratio*1e-3, df.termpos_residual, c=df.term_year, cmap=sigma_by_velyear_cmap)
 #    ax.scatter(df.fluxratio*1e-3, df.termpos_residual, c='green', cmap=sigma_by_velyear_cmap)
     ax.plot(df.fluxratio*1e-3, df.fluxratio * lr.slope + lr.intercept)
+    ax.tick_params(labelsize=18)
     if not pub:
         ax.set_xlabel('von Mises \u03C3 Across Terminus (kPa)', fontsize=14)    # Sigma
         ax.set_ylabel('Slater Terminus Residual (km)', fontsize=14)
@@ -360,14 +374,18 @@ def plot_page(odir_gl, odir_pub, selrow, velterm_df, make_rapsheet=True, pub=Fal
             ofname = os.path.join(odir_pub, fname+'_300.png')
             print('fname = ', ofname)
             fig = matplotlib.pyplot.figure(figsize=size)
+#            fig.subplots_adjust(right=0.9)  # https://stackoverflow.com/questions/4042192/reduce-left-and-right-margins-in-matplotlib-plot
             do_plot(fig)
+#            fig.tight_layout()    # Make sure labels are not cut off at edge of raster
+            #fig.margins(y=0.5, tight=False)
             os.makedirs(odir_pub, exist_ok=True)
             with ioutil.TmpDir(dir=odir_pub) as tdir:
                 fname0 = tdir.filename() + '.png'
-                fig.savefig(fname0, dpi=300)   # Hi-res version
+                fig.savefig(fname0, dpi=300, bbox_inches='tight', pad_inches=0.5)   # Hi-res version; add margin so text is not cut off
 
                 with ioutil.WriteIfDifferent(ofname) as wid:
                     cmd = ['convert', fname0, '-trim', '-strip', wid.tmpfile]
+#                    cmd = ['cp', fname0, wid.tmpfile]
                     subprocess.run(cmd, check=True)
 #                    shutil.copy(fname0, wid.tmpfile)
 
@@ -529,7 +547,7 @@ def main():
     all_plots(False, True)
 
     # Make rapsheets for all glaciers
-    all_plots(True, False)
+#    all_plots(True, False)
 
 
 page_tpl = string.Template(r"""
