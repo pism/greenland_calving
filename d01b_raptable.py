@@ -32,9 +32,9 @@ tpl_foot = r"""
 \end{tabular}
 """
 
-
 #rowtpl = """{row.w21t_glacier_number} & {row.w21t_Glacier_x} & {row.side}-{row.w21t_lat:0.1f} & {row.total_retreat_m:0.0f} & {row.rs_slope:1.1g} & {row.rs_pvalue_pct:0.0f} & {row.mean_bar_sigmat:0.0f}"""
-rowtpl = """{row.sl19_rignotid:0.0f} & {row.w21t_Glacier_x} & {row.side}-{row.w21t_lat:0.1f} & {row.total_retreat_m:0.0f} & {row.rs_slope:1.1g} & {row.rs_pvalue:0.2f} & {row.mean_bar_sigmat:0.0f}"""
+rowtpl = """{row.sl19_rignotid:0.0f} & {row.w21t_Glacier_x} & {row.side}-{row.w21t_lat:0.1f} & {row.total_retreat_m:0.0f} & {row.rs_slope:1.1g} & {row.rs_pvalue:0.2f} & {row.mean_bar_sigmat:0.0f}  % R2={row.R2:0.2f} p={row.rs_pvalue:0.3f}
+"""
 
 
 
@@ -52,9 +52,10 @@ def main():
 
     df['side'] = df['ns481_grid_x'].map(lambda x: x[0])
     df['mean_bar_sigmat'] = .001 * df['fluxratio'].map(lambda x: np.mean(x))
+    df['R2'] = df.rs_rvalue * df.rs_rvalue
 
     df = df[['w21t_glacier_number', 'w21t_Glacier_x', 'sl19_rignotid', 'side', 'w21t_lat',
-        'total_retreat_lsqr', 'rs_slope', 'rs_pvalue', 'mean_bar_sigmat', 'category']]
+        'total_retreat_lsqr', 'rs_slope', 'R2', 'rs_pvalue', 'mean_bar_sigmat', 'category']]
     df['total_retreat_m'] = 1000. * df['total_retreat_lsqr']
     df['order'] = df['category'].map(lambda x: catorder[x])
     df['scategory'] = df['category'].map(lambda x: cattrans[x])

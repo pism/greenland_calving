@@ -10,6 +10,8 @@ myrealpath() {
 
 
 HARNESS=$(dirname $(dirname $(myrealpath $0)))
+echo "xx $0"
+echo "HARNESS=$HARNESS"
 export PYTHONPATH=$PYTHONPATH:$HARNESS/uafgi:$HARNESS/greenland_calving
 
 
